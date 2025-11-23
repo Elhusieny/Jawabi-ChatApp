@@ -1,6 +1,3 @@
-
-
-
 import Foundation
 import Combine
 class AuthnticationServices{
@@ -13,8 +10,6 @@ class AuthnticationServices{
     }
     
     private init() {}
-    
-    
     
     // MARK: - Authentication
     func register(_ request: RegisterRequest) -> AnyPublisher<String, Error> {
