@@ -1,32 +1,50 @@
-//
-//  ChatApp.swift
-//  Chat
-//
-//  Created by Ahmed Elhussieny on 16/11/2025.
-//
 
+// App.swift or your main app file
 import SwiftUI
-import SwiftData
 
 @main
 struct ChatApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
-
+    @StateObject private var authViewModel = AuthViewModel()
+    
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            Group {
+                if authViewModel.isAuthenticated {
+                    ChatListView()
+                        .environmentObject(authViewModel)
+                } else {
+                    LoginView()
+                        .environmentObject(authViewModel)
+                }
+            }
+            .onAppear {
+                authViewModel.checkAuthenticationStatus()
+            }
         }
-        .modelContainer(sharedModelContainer)
     }
 }
+//@main
+//struct ChatApp: App {
+//    @StateObject private var authViewModel = AuthViewModel()
+//    @StateObject private var chatViewModel = ChatViewModel()
+//    
+//    var body: some Scene {
+//        WindowGroup {
+//            ContentView()
+//                .environmentObject(authViewModel)
+//                .environmentObject(chatViewModel)
+//        }
+//    }
+//}
+//
+//struct ContentView: View {
+//    @EnvironmentObject var authViewModel: AuthViewModel
+//    
+//    var body: some View {
+//        if authViewModel.isAuthenticated {
+//            ChatListView()
+//        } else {
+//            LoginView()
+//        }
+//    }
+//}
