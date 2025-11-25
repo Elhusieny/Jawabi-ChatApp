@@ -4,6 +4,7 @@ struct ChatListView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @StateObject private var chatViewModel = ChatViewModel()
     @State private var showingNewChat = false
+    @State private var showingCreateRoom = false // Add this
     @State private var showingProfile = false
     @State private var showingSearch = false
     @State private var searchText = ""
@@ -67,13 +68,16 @@ struct ChatListView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 16) {
                         searchButton
-                        newChatButton
+                        menuButton // Changed from newChatButton to menuButton
                     }
                 }
             }
             .searchable(text: $searchText, isPresented: $showingSearch, prompt: "Search chats...")
             .sheet(isPresented: $showingNewChat) {
                 NewChatView(chatViewModel: chatViewModel, isPresented: $showingNewChat)
+            }
+            .sheet(isPresented: $showingCreateRoom) { // Add this sheet
+                CreateRoomView()
             }
             .sheet(isPresented: $showingProfile) {
                 ProfileView(authViewModel: authViewModel, isPresented: $showingProfile)
@@ -83,11 +87,13 @@ struct ChatListView: View {
                     loadingOverlay
                 }
             }
-            .onAppear {
+            .onAppear() {
+                chatViewModel.loadSavedChats()// Make sure this loads all chats with latest messages
+
                 print("📱 ChatListView appeared with \(chatViewModel.chats.count) chats")
             }
         }
-        .accentColor(.green) // WhatsApp-like green accent
+        .accentColor(.green)
     }
     
     // MARK: - Subviews
@@ -118,182 +124,218 @@ struct ChatListView: View {
                         )
                     )
                 
-                Text("Start chatting by tapping the compose button")
+                Text("Start chatting by creating a new chat or group room")
                     .font(.body)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
             }
             
-            Button {
-                showingNewChat = true
-                chatViewModel.loadAllUsers()
-            } label: {
-                HStack {
-                    Image(systemName: "square.and.pencil")
-                        .foregroundStyle(.white)
-                    
-                    Text("Start Chatting")
-                        .foregroundColor(.white)
-                }
-                .font(.headline)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-                .background(
-                    LinearGradient(
-                        colors: [.blue, .purple],
-                        startPoint: .leading,
-                        endPoint: .trailing
+            VStack(spacing: 12) {
+                Button {
+                    showingNewChat = true
+                    chatViewModel.loadAllUsers()
+                } label: {
+                    HStack {
+                        Image(systemName: "message.fill")
+                            .foregroundStyle(.white)
+                        
+                        Text("New Chat")
+                            .foregroundColor(.white)
+                    }
+                    .font(.headline)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(
+                        LinearGradient(
+                            colors: [.blue, .purple],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
                     )
-                )
-                .cornerRadius(25)
-                .shadow(color: .blue.opacity(0.3), radius: 8, x: 0, y: 4)
+                    .cornerRadius(25)
+                    .shadow(color: .blue.opacity(0.3), radius: 8, x: 0, y: 4)
+                }
+                
+                Button {
+                    showingCreateRoom = true
+                } label: {
+                    HStack {
+                        Image(systemName: "person.2.fill")
+                            .foregroundStyle(.white)
+                        
+                        Text("Create Room")
+                            .foregroundColor(.white)
+                    }
+                    .font(.headline)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(
+                        LinearGradient(
+                            colors: [.green, .blue],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .cornerRadius(25)
+                    .shadow(color: .green.opacity(0.3), radius: 8, x: 0, y: 4)
+                }
             }
             .padding(.top, 10)
         }
     }
     
     private var chatListView: some View {
-           ScrollView {
-               LazyVStack(spacing: 1) {
-                   ForEach(filteredChats, id: \.id) { chat in
-                       NavigationLink {
-                           ChatDetailView(chat: chat, chatViewModel: chatViewModel)
-                       } label: {
-                           ChatRow(chat: chat, gradientAnimation: gradientAnimation)
-                               .contentShape(Rectangle())
-                       }
-                       .buttonStyle(.plain)
-                       
-                       Divider()
-                           .padding(.leading, 76)
-                   }
-               }
-               .background(Color(.systemBackground).opacity(0.8))
-           }
-           .background(Color.clear)
-       }
-       
-       private var profileButton: some View {
-           Button {
-               showingProfile = true
-           } label: {
-               ZStack {
-                   Circle()
-                       .fill(
-                           LinearGradient(
-                               colors: [.blue.opacity(0.1), .purple.opacity(0.1)],
-                               startPoint: .topLeading,
-                               endPoint: .bottomTrailing
-                           )
-                       )
-                       .frame(width: 36, height: 36)
-                   
-                   Image(systemName: "person.circle.fill")
-                       .font(.title3)
-                       .foregroundStyle(
-                           LinearGradient(
-                               colors: iconGradientColors,
-                               startPoint: gradientAnimation ? .top : .leading,
-                               endPoint: gradientAnimation ? .bottom : .trailing
-                           )
-                       )
-                       .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: gradientAnimation)
-               }
-           }
-       }
-       
-       private var searchButton: some View {
-           Button {
-               showingSearch = true
-           } label: {
-               ZStack {
-                   Circle()
-                       .fill(
-                           LinearGradient(
-                               colors: [.blue.opacity(0.1), .purple.opacity(0.1)],
-                               startPoint: .topLeading,
-                               endPoint: .bottomTrailing
-                           )
-                       )
-                       .frame(width: 36, height: 36)
-                   
-                   Image(systemName: "magnifyingglass")
-                       .font(.title3)
-                       .foregroundStyle(
-                           LinearGradient(
-                               colors: iconGradientColors,
-                               startPoint: gradientAnimation ? .top : .leading,
-                               endPoint: gradientAnimation ? .bottom : .trailing
-                           )
-                       )
-                       .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: gradientAnimation)
-               }
-           }
-       }
-       
-       private var newChatButton: some View {
-           Button {
-               if UserDefaults.standard.string(forKey: "authToken") != nil {
-                   showingNewChat = true
-                   chatViewModel.loadAllUsers()
-               } else {
-                   chatViewModel.errorMessage = "Not authenticated. Please login again."
-               }
-           } label: {
-               ZStack {
-                   Circle()
-                       .fill(
-                           LinearGradient(
-                               colors: [.blue.opacity(0.1), .purple.opacity(0.1)],
-                               startPoint: .topLeading,
-                               endPoint: .bottomTrailing
-                           )
-                       )
-                       .frame(width: 36, height: 36)
-                   
-                   Image(systemName: "square.and.pencil")
-                       .font(.title3)
-                       .foregroundStyle(
-                           LinearGradient(
-                               colors: iconGradientColors,
-                               startPoint: gradientAnimation ? .top : .leading,
-                               endPoint: gradientAnimation ? .bottom : .trailing
-                           )
-                       )
-                       .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: gradientAnimation)
-               }
-           }
-       }
-       
-       private var loadingOverlay: some View {
-           ZStack {
-               Color.black.opacity(0.1)
-                   .ignoresSafeArea()
-               
-               VStack(spacing: 16) {
-                   ProgressView()
-                       .scaleEffect(1.2)
-                       .tint(.blue)
-                   
-                   Text("Loading...")
-                       .font(.subheadline)
-                       .foregroundStyle(
-                           LinearGradient(
-                               colors: [.blue, .purple],
-                               startPoint: .leading,
-                               endPoint: .trailing
-                           )
-                       )
-               }
-               .padding(24)
-               .background(Color(.systemBackground))
-               .cornerRadius(16)
-               .shadow(color: .black.opacity(0.1), radius: 10)
-           }
-       }
-   }
-
+        ScrollView {
+            LazyVStack(spacing: 1) {
+                ForEach(filteredChats, id: \.id) { chat in
+                    NavigationLink {
+                        ChatDetailView(chat: chat, chatViewModel: chatViewModel)
+                    } label: {
+                        ChatRow(chat: chat, gradientAnimation: gradientAnimation)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Divider()
+                        .padding(.leading, 76)
+                }
+            }
+            .background(Color(.systemBackground).opacity(0.8))
+        }
+        .background(Color.clear)
+    }
+    
+    private var profileButton: some View {
+        Button {
+            showingProfile = true
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [.blue.opacity(0.1), .purple.opacity(0.1)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 36, height: 36)
+                
+                Image(systemName: "person.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: iconGradientColors,
+                            startPoint: gradientAnimation ? .top : .leading,
+                            endPoint: gradientAnimation ? .bottom : .trailing
+                        )
+                    )
+                    .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: gradientAnimation)
+            }
+        }
+    }
+    
+    private var searchButton: some View {
+        Button {
+            showingSearch = true
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [.blue.opacity(0.1), .purple.opacity(0.1)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 36, height: 36)
+                
+                Image(systemName: "magnifyingglass")
+                    .font(.title3)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: iconGradientColors,
+                            startPoint: gradientAnimation ? .top : .leading,
+                            endPoint: gradientAnimation ? .bottom : .trailing
+                        )
+                    )
+                    .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: gradientAnimation)
+            }
+        }
+    }
+    
+    // REPLACE newChatButton with menuButton
+    private var menuButton: some View {
+        Menu {
+            Button(action: {
+                if UserDefaults.standard.string(forKey: "authToken") != nil {
+                    showingNewChat = true
+                    chatViewModel.loadAllUsers()
+                } else {
+                    chatViewModel.errorMessage = "Not authenticated. Please login again."
+                }
+            }) {
+                Label("New Chat", systemImage: "message")
+            }
+            
+            Button(action: {
+                showingCreateRoom = true
+            }) {
+                Label("Create Room", systemImage: "person.2")
+            }
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [.blue.opacity(0.1), .purple.opacity(0.1)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 36, height: 36)
+                
+                Image(systemName: "plus")
+                    .font(.title3)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: iconGradientColors,
+                            startPoint: gradientAnimation ? .top : .leading,
+                            endPoint: gradientAnimation ? .bottom : .trailing
+                        )
+                    )
+                    .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: gradientAnimation)
+            }
+        }
+    }
+    
+    private var loadingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.1)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 16) {
+                ProgressView()
+                    .scaleEffect(1.2)
+                    .tint(.blue)
+                
+                Text("Loading...")
+                    .font(.subheadline)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [.blue, .purple],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+            }
+            .padding(24)
+            .background(Color(.systemBackground))
+            .cornerRadius(16)
+            .shadow(color: .black.opacity(0.1), radius: 10)
+        }
+    }
+}
    // Enhanced ChatRow with moving gradient colors
    struct ChatRow: View {
        let chat: Chat

@@ -9,7 +9,7 @@ class ChatViewModel: ObservableObject {
     @Published var errorMessage: String?
     
     private var cancellables = Set<AnyCancellable>()
-    private let networkService = NetworkService.shared
+    private let networkService = GetAllChatsService.shared
     
     // Generate a unique key for each user's chats
     private var chatsKey: String {
@@ -56,7 +56,7 @@ class ChatViewModel: ObservableObject {
         }
     }
     
-    private func loadSavedChats() {
+     func loadSavedChats() {
         if let savedChatsData = UserDefaults.standard.data(forKey: chatsKey),
            let savedChats = try? JSONDecoder().decode([Chat].self, from: savedChatsData) {
             self.chats = savedChats.sorted { $0.lastMessageDate > $1.lastMessageDate }
@@ -88,7 +88,7 @@ class ChatViewModel: ObservableObject {
         
         print("🎯 Creating new chat with user ID: \(userId)")
         
-        networkService.createPrivateChat(with: userId)
+        PrivateChatService.shared.createPrivateChat(with: userId)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completion in
                 self?.isLoading = false
@@ -131,7 +131,7 @@ class ChatViewModel: ObservableObject {
         
         print("👥 Loading all users...")
         
-        networkService.getAllUsers()
+        GetAllUsersService.shared.getAllUsers()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completion in
                 self?.isLoading = false
@@ -155,7 +155,7 @@ class ChatViewModel: ObservableObject {
         
         print("📤 Sending message to chat \(chatId): \(text)")
         
-        networkService.sendMessage(request)
+        SendMsgService.shared.sendMessage(request)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completion in
                 switch completion {
@@ -188,7 +188,7 @@ class ChatViewModel: ObservableObject {
     // MARK: - Refresh Chat (updated to also save locally)
     // Update refreshChat to handle real-time updates
     func refreshChat(chatId: Int) {
-        networkService.getChat(chatId)
+        GetAllChatsService.shared.getChat(chatId)
             .receive(on: DispatchQueue.main)
             .sink { completion in
                 if case .failure(let error) = completion {
@@ -215,7 +215,7 @@ class ChatViewModel: ObservableObject {
         
         print("📋 Loading chat \(chatId)")
         
-        networkService.getChat(chatId)
+        GetAllChatsService.shared.getChat(chatId)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completion in
                 self?.isLoading = false
