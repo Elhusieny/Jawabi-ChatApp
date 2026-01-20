@@ -1,20 +1,5 @@
 import Foundation
 
-//// MARK: - Create Room Request
-//struct CreateRoomRequest {
-//    let name: String
-//    let chatPicture: String?
-//    let memberIds: [String]
-//}
-//
-//// MARK: - Create Room Response
-//struct CreateRoomResponse: Codable {
-//    let success: Bool
-//    let roomId: Int?
-//    let message: String?
-//    let error: String?
-//}
-
 // MARK: - Join Room Response
 struct JoinRoomResponse: Codable {
     let result: String?

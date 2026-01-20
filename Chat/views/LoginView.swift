@@ -5,32 +5,43 @@ struct LoginView: View {
     @State private var userName = ""
     @State private var password = ""
     @State private var isPasswordVisible = false
-    
     @State private var gradientAnimation = false
 
-    // Moving color sets
-    private let gradientColors1: [Color] = [
-        Color.blue.opacity(0.3),
-        Color.purple.opacity(0.2),
-        Color.pink.opacity(0.3)
-    ]
+    // Define the main color as static computed properties - SAME AS ProfileView
+    private var primaryColor: Color { Color(hex: "#7373d2") }
+    private var primaryColorLight: Color { primaryColor.opacity(0.2) }
+    private var primaryColorDark: Color { primaryColor.opacity(0.8) }
     
-    private let gradientColors2: [Color] = [
-        Color.purple.opacity(0.3),
-        Color.blue.opacity(0.2),
-        Color.cyan.opacity(0.3)
-    ]
+    // Computed gradient colors - SAME AS ProfileView
+    private var gradientColors1: [Color] {
+        [
+            primaryColor.opacity(0.1),
+            Color(hex: "#9d73d2").opacity(0.05),
+            Color(hex: "#d273a3").opacity(0.1)
+        ]
+    }
     
-    private let buttonGradient1: [Color] = [Color.blue, Color.purple]
-    private let buttonGradient2: [Color] = [Color.purple, Color.pink]
+    private var gradientColors2: [Color] {
+        [
+            Color(hex: "#9d73d2").opacity(0.1),
+            primaryColor.opacity(0.05),
+            Color(hex: "#73d2b8").opacity(0.1)
+        ]
+    }
     
-    // Consistent icon gradient colors for all icons
-    private let iconGradientColors: [Color] = [.blue, .purple, .pink]
+    private var iconGradientColors: [Color] {
+        [primaryColor, Color(hex: "#9d73d2"), Color(hex: "#d273a3")]
+    }
+    
+    // Dark purple gradient (same as ProfileView)
+    private var darkPurpleGradient: [Color] {
+        [Color(hex: "#5a5aa8"), primaryColor] // Darker purple to primary purple
+    }
     
     var body: some View {
         NavigationStack {
             ZStack {
-                // Animated Background
+                // Animated Background - SAME GRADIENT
                 LinearGradient(
                     colors: gradientAnimation ? gradientColors1 : gradientColors2,
                     startPoint: .topLeading,
@@ -51,12 +62,11 @@ struct LoginView: View {
                             .foregroundStyle(
                                 LinearGradient(
                                     colors: iconGradientColors,
-                                    startPoint: gradientAnimation ? .topLeading : .bottomLeading,
-                                    endPoint: gradientAnimation ? .bottomTrailing : .topTrailing
+                                    startPoint: .leading,
+                                    endPoint: .trailing
                                 )
                             )
                             .symbolRenderingMode(.hierarchical)
-                            .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: gradientAnimation)
                         
                         VStack(spacing: 8) {
                             Text("Welcome Back")
@@ -64,7 +74,7 @@ struct LoginView: View {
                                 .fontWeight(.bold)
                                 .foregroundStyle(
                                     LinearGradient(
-                                        colors: [.blue, .purple],
+                                        colors: darkPurpleGradient,
                                         startPoint: .leading,
                                         endPoint: .trailing
                                     )
@@ -91,13 +101,12 @@ struct LoginView: View {
                                 Image(systemName: "person.fill")
                                     .foregroundStyle(
                                         LinearGradient(
-                                            colors: iconGradientColors,
-                                            startPoint: gradientAnimation ? .top : .leading,
-                                            endPoint: gradientAnimation ? .bottom : .trailing
+                                            colors: darkPurpleGradient,
+                                            startPoint: .leading,
+                                            endPoint: .trailing
                                         )
                                     )
                                     .frame(width: 20)
-                                    .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: gradientAnimation)
                                 
                                 TextField("Enter your username", text: $userName)
                                     .textFieldStyle(PlainTextFieldStyle())
@@ -109,7 +118,14 @@ struct LoginView: View {
                             .cornerRadius(12)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                    .stroke(
+                                        LinearGradient(
+                                            colors: [.gray.opacity(0.2), .gray.opacity(0.1)],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        ),
+                                        lineWidth: 1
+                                    )
                             )
                         }
                         
@@ -124,13 +140,12 @@ struct LoginView: View {
                                 Image(systemName: "lock.fill")
                                     .foregroundStyle(
                                         LinearGradient(
-                                            colors: iconGradientColors,
-                                            startPoint: gradientAnimation ? .top : .leading,
-                                            endPoint: gradientAnimation ? .bottom : .trailing
+                                            colors: darkPurpleGradient,
+                                            startPoint: .leading,
+                                            endPoint: .trailing
                                         )
                                     )
                                     .frame(width: 20)
-                                    .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: gradientAnimation)
                                 
                                 if isPasswordVisible {
                                     TextField("Enter your password", text: $password)
@@ -146,12 +161,11 @@ struct LoginView: View {
                                     Image(systemName: isPasswordVisible ? "eye.slash.fill" : "eye.fill")
                                         .foregroundStyle(
                                             LinearGradient(
-                                                colors: iconGradientColors,
-                                                startPoint: gradientAnimation ? .top : .leading,
-                                                endPoint: gradientAnimation ? .bottom : .trailing
+                                                colors: darkPurpleGradient,
+                                                startPoint: .leading,
+                                                endPoint: .trailing
                                             )
                                         )
-                                        .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: gradientAnimation)
                                 }
                             }
                             .padding()
@@ -159,18 +173,25 @@ struct LoginView: View {
                             .cornerRadius(12)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                                    .stroke(
+                                        LinearGradient(
+                                            colors: [.gray.opacity(0.2), .gray.opacity(0.1)],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        ),
+                                        lineWidth: 1
+                                    )
                             )
                         }
                     }
                     .padding(.horizontal)
                     
-                    // Login Button
+                    // Login Button - DARK PURPLE GRADIENT (STATIC)
                     VStack(spacing: 16) {
                         if authViewModel.isLoading {
                             ProgressView()
                                 .scaleEffect(1.2)
-                                .tint(.blue)
+                                .tint(primaryColor)
                         } else {
                             Button {
                                 authViewModel.login(userName: userName, password: password)
@@ -188,18 +209,16 @@ struct LoginView: View {
                                 .padding()
                                 .background(
                                     LinearGradient(
-                                        colors: gradientAnimation ? buttonGradient1 : buttonGradient2,
+                                        colors: darkPurpleGradient,
                                         startPoint: .leading,
                                         endPoint: .trailing
                                     )
                                 )
                                 .cornerRadius(12)
-                                .shadow(color: .blue.opacity(0.3), radius: 8, x: 0, y: 4)
-                                .scaleEffect(gradientAnimation ? 1.02 : 1.0)
+                                .shadow(color: primaryColor.opacity(0.3), radius: 8, x: 0, y: 4)
                             }
                             .disabled(userName.isEmpty || password.isEmpty)
                             .opacity((userName.isEmpty || password.isEmpty) ? 0.6 : 1.0)
-                            .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: gradientAnimation)
                         }
                         
                         // Register Link
@@ -213,7 +232,7 @@ struct LoginView: View {
                                 Text("Register")
                                     .foregroundStyle(
                                         LinearGradient(
-                                            colors: [.blue, .purple],
+                                            colors: darkPurpleGradient,
                                             startPoint: .leading,
                                             endPoint: .trailing
                                         )
@@ -231,7 +250,7 @@ struct LoginView: View {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(
                                     LinearGradient(
-                                        colors: [.orange, .red],
+                                        colors: [.orange, .yellow],
                                         startPoint: .top,
                                         endPoint: .bottom
                                     )
@@ -255,6 +274,6 @@ struct LoginView: View {
             }
             .navigationBarHidden(true)
         }
-        .accentColor(.blue)
+        .accentColor(primaryColor)
     }
 }

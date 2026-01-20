@@ -1,6 +1,15 @@
 {
-  "originHash" : "ea9e945542b3f2cb9a0eed798c9b1cf9f3edd41f78b6790a3c8c453ef7db8171",
+  "originHash" : "2aecbcd1b9c51607cc0e620cfdb60dc19138fba98bdbbf06c16c16a0ad1eb884",
   "pins" : [
+    {
+      "identity" : "alamofire",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Alamofire/Alamofire",
+      "state" : {
+        "revision" : "513364f870f6bfc468f9d2ff0a95caccc10044c5",
+        "version" : "5.10.2"
+      }
+    },
     {
       "identity" : "signalr-client-swift",
       "kind" : "remoteSourceControl",

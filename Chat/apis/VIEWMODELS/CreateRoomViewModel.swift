@@ -3,8 +3,8 @@ import SwiftUI
 
 
 class CreateRoomViewModel: ObservableObject {
-    @Published var availableUsers: [APIUser] = []
-    @Published var selectedUsers: [APIUser] = []
+    @Published var availableUsers: [GetAllUsersDM] = []
+    @Published var selectedUsers: [GetAllUsersDM] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var successMessage: String?
@@ -35,7 +35,7 @@ class CreateRoomViewModel: ObservableObject {
             .store(in: &cancellables)
     }
     
-    func toggleUserSelection(_ user: APIUser) {
+    func toggleUserSelection(_ user: GetAllUsersDM) {
         if let index = selectedUsers.firstIndex(where: { $0.id == user.id }) {
             selectedUsers.remove(at: index)
         } else {

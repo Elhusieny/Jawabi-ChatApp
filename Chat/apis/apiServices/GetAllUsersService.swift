@@ -12,7 +12,7 @@ class GetAllUsersService:AuthHeaderAdding {
     private init() {}
     
     // MARK: - Get All Users (with authentication)
-    func getAllUsers() -> AnyPublisher<[APIUser], Error> {
+    func getAllUsers() -> AnyPublisher<[GetAllUsersDM], Error> {
         guard let url = URL(string: "\(baseURL)/api/Chat/GetAllUsers") else {
             return Fail(error: NetworkError.invalidURL).eraseToAnyPublisher()
         }
@@ -73,7 +73,7 @@ class GetAllUsersService:AuthHeaderAdding {
                     print("❌ Decoding error: \(error)")
                     // Try alternative decoding if the main one fails
                     do {
-                        let users = try JSONDecoder().decode([APIUser].self, from: data)
+                        let users = try JSONDecoder().decode([GetAllUsersDM].self, from: data)
                         print("✅ Successfully decoded \(users.count) users as direct array")
                         return users
                     } catch {

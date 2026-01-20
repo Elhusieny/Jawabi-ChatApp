@@ -31,8 +31,10 @@ class AuthnticationServices{
             "Email": request.email,
             "DisplayName": request.displayName,
             "PhoneNumber": request.phoneNumber,
-            "Password": request.password
-        ]
+            "Password": request.password,
+
+            "ServerUrl": request.serverUrl ?? "http://158.220.90.131:8444" // Provide default value
+                ]
         
         for (key, value) in fields {
             body.append("--\(boundary)\r\n")

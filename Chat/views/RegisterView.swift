@@ -16,7 +16,8 @@ struct RegisterView: View {
     @State private var isPasswordVisible = false
     @State private var isConfirmPasswordVisible = false
     @State private var gradientAnimation = false
-    
+    @State private var serverUrl = ""
+
     private var isFormValid: Bool {
         validationErrors.isEmpty &&
         !userName.isEmpty &&
@@ -27,35 +28,44 @@ struct RegisterView: View {
         password == confirmPassword
     }
     
-    // Moving color sets
-    private let gradientColors1: [Color] = [
-        Color.blue.opacity(0.3),
-        Color.purple.opacity(0.2),
-        Color.pink.opacity(0.3)
-    ]
+    // Define the main color as static computed properties - SAME AS ChatListView
+    private var primaryColor: Color { Color(hex: "#7373d2") }
+    private var primaryColorLight: Color { primaryColor.opacity(0.2) }
+    private var primaryColorDark: Color { primaryColor.opacity(0.8) }
     
-    private let gradientColors2: [Color] = [
-        Color.purple.opacity(0.3),
-        Color.blue.opacity(0.2),
-        Color.cyan.opacity(0.3)
-    ]
+    // Computed gradient colors - SAME AS ChatListView
+    private var gradientColors1: [Color] {
+        [
+            primaryColor.opacity(0.1),
+            Color(hex: "#9d73d2").opacity(0.05),
+            Color(hex: "#d273a3").opacity(0.1)
+        ]
+    }
     
-    private let buttonGradient1: [Color] = [Color.blue, Color.purple]
-    private let buttonGradient2: [Color] = [Color.purple, Color.pink]
+    private var gradientColors2: [Color] {
+        [
+            Color(hex: "#9d73d2").opacity(0.1),
+            primaryColor.opacity(0.05),
+            Color(hex: "#73d2b8").opacity(0.1)
+        ]
+    }
     
-    // Icon gradient sets
-    private let iconGradients: [[Color]] = [
-        [.blue, .purple],
-        [.purple, .pink],
-        [.pink, .orange],
-        [.cyan, .blue],
-        [.indigo, .purple],
-        [.teal, .green]
-    ]
+    private var iconGradientColors: [Color] {
+        [primaryColor, Color(hex: "#9d73d2"), Color(hex: "#d273a3")]
+    }
+    
+    // Button gradient colors using the same scheme
+    private var buttonGradient1: [Color] {
+        [primaryColor, Color(hex: "#9d73d2")]
+    }
+    
+    private var buttonGradient2: [Color] {
+        [Color(hex: "#73d2a3"), primaryColor]
+    }
     
     var body: some View {
         ZStack {
-            // Animated Background
+            // Animated Background - SAME AS ChatListView
             LinearGradient(
                 colors: gradientAnimation ? gradientColors1 : gradientColors2,
                 startPoint: .topLeading,
@@ -75,7 +85,13 @@ struct RegisterView: View {
                         Text("Create Account")
                             .font(.title2)
                             .fontWeight(.bold)
-                            .foregroundColor(.primary)
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [primaryColor, Color(hex: "#9d73d2")],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
                         
                         Text("Join our community today")
                             .font(.body)
@@ -97,17 +113,20 @@ struct RegisterView: View {
                                         .clipShape(Circle())
                                         .overlay(
                                             Circle()
-                                                .stroke(LinearGradient(
-                                                    colors: gradientAnimation ? [.blue, .purple] : [.purple, .pink],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                ), lineWidth: 3)
+                                                .stroke(
+                                                    LinearGradient(
+                                                        colors: gradientAnimation ? buttonGradient1 : buttonGradient2,
+                                                        startPoint: .topLeading,
+                                                        endPoint: .bottomTrailing
+                                                    ),
+                                                    lineWidth: 3
+                                                )
                                         )
                                 } else {
                                     Circle()
                                         .fill(
                                             LinearGradient(
-                                                colors: [.blue.opacity(0.2), .purple.opacity(0.2)],
+                                                colors: [primaryColor.opacity(0.2), Color(hex: "#9d73d2").opacity(0.2)],
                                                 startPoint: .topLeading,
                                                 endPoint: .bottomTrailing
                                             )
@@ -118,7 +137,7 @@ struct RegisterView: View {
                                                 .font(.system(size: 50))
                                                 .foregroundStyle(
                                                     LinearGradient(
-                                                        colors: gradientAnimation ? [.blue, .purple] : [.purple, .pink],
+                                                        colors: gradientAnimation ? buttonGradient1 : buttonGradient2,
                                                         startPoint: .topLeading,
                                                         endPoint: .bottomTrailing
                                                     )
@@ -130,7 +149,7 @@ struct RegisterView: View {
                                 Circle()
                                     .fill(
                                         LinearGradient(
-                                            colors: gradientAnimation ? [.blue, .purple] : [.purple, .pink],
+                                            colors: gradientAnimation ? buttonGradient1 : buttonGradient2,
                                             startPoint: .leading,
                                             endPoint: .trailing
                                         )
@@ -150,7 +169,7 @@ struct RegisterView: View {
                             .font(.subheadline)
                             .foregroundStyle(
                                 LinearGradient(
-                                    colors: gradientAnimation ? [.blue, .purple] : [.purple, .pink],
+                                    colors: gradientAnimation ? buttonGradient1 : buttonGradient2,
                                     startPoint: .leading,
                                     endPoint: .trailing
                                 )
@@ -167,7 +186,7 @@ struct RegisterView: View {
                                 .fontWeight(.semibold)
                                 .foregroundStyle(
                                     LinearGradient(
-                                        colors: gradientAnimation ? [.blue, .purple] : [.purple, .pink],
+                                        colors: gradientAnimation ? [primaryColor, Color(hex: "#9d73d2")] : [Color(hex: "#73d2a3"), primaryColor],
                                         startPoint: .leading,
                                         endPoint: .trailing
                                     )
@@ -178,7 +197,7 @@ struct RegisterView: View {
                                 title: "Username",
                                 text: $userName,
                                 icon: "person.fill",
-                                gradientColors: iconGradients[0],
+                                gradientColors: iconGradientColors,
                                 isAnimating: gradientAnimation,
                                 keyboardType: .default
                             )
@@ -187,7 +206,7 @@ struct RegisterView: View {
                                 title: "Email",
                                 text: $email,
                                 icon: "envelope.fill",
-                                gradientColors: iconGradients[1],
+                                gradientColors: iconGradientColors,
                                 isAnimating: gradientAnimation,
                                 keyboardType: .emailAddress
                             )
@@ -196,7 +215,7 @@ struct RegisterView: View {
                                 title: "Display Name",
                                 text: $displayName,
                                 icon: "tag.fill",
-                                gradientColors: iconGradients[2],
+                                gradientColors: iconGradientColors,
                                 isAnimating: gradientAnimation,
                                 keyboardType: .default
                             )
@@ -205,11 +224,20 @@ struct RegisterView: View {
                                 title: "Phone Number",
                                 text: $phoneNumber,
                                 icon: "phone.fill",
-                                gradientColors: iconGradients[3],
+                                gradientColors: iconGradientColors,
                                 isAnimating: gradientAnimation,
                                 keyboardType: .phonePad
                             )
                         }
+                        
+                        AnimatedIconTextField(
+                            title: "Server URL",
+                            text: $serverUrl,
+                            icon: "server.rack",
+                            gradientColors: iconGradientColors,
+                            isAnimating: gradientAnimation,
+                            keyboardType: .URL
+                        )
                         
                         // Security
                         VStack(alignment: .leading, spacing: 16) {
@@ -218,7 +246,7 @@ struct RegisterView: View {
                                 .fontWeight(.semibold)
                                 .foregroundStyle(
                                     LinearGradient(
-                                        colors: gradientAnimation ? [.purple, .blue] : [.blue, .cyan],
+                                        colors: gradientAnimation ? [Color(hex: "#9d73d2"), primaryColor] : [primaryColor, Color(hex: "#73d2a3")],
                                         startPoint: .leading,
                                         endPoint: .trailing
                                     )
@@ -229,7 +257,7 @@ struct RegisterView: View {
                                 title: "Password",
                                 text: $password,
                                 icon: "lock.fill",
-                                gradientColors: iconGradients[4],
+                                gradientColors: iconGradientColors,
                                 isAnimating: gradientAnimation,
                                 isPasswordVisible: $isPasswordVisible
                             )
@@ -238,7 +266,7 @@ struct RegisterView: View {
                                 title: "Confirm Password",
                                 text: $confirmPassword,
                                 icon: "lock.fill",
-                                gradientColors: iconGradients[5],
+                                gradientColors: iconGradientColors,
                                 isAnimating: gradientAnimation,
                                 isPasswordVisible: $isConfirmPasswordVisible
                             )
@@ -304,7 +332,7 @@ struct RegisterView: View {
                         if authViewModel.isLoading {
                             ProgressView()
                                 .scaleEffect(1.2)
-                                .tint(.blue)
+                                .tint(primaryColor)
                         } else {
                             Button(action: register) {
                                 HStack {
@@ -326,7 +354,7 @@ struct RegisterView: View {
                                     )
                                 )
                                 .cornerRadius(12)
-                                .shadow(color: .blue.opacity(0.3), radius: 8, x: 0, y: 4)
+                                .shadow(color: primaryColor.opacity(0.3), radius: 8, x: 0, y: 4)
                                 .scaleEffect(gradientAnimation ? 1.02 : 1.0)
                             }
                             .disabled(!isFormValid)
@@ -340,7 +368,7 @@ struct RegisterView: View {
                         .font(.subheadline)
                         .foregroundStyle(
                             LinearGradient(
-                                colors: gradientAnimation ? [.blue, .purple] : [.purple, .pink],
+                                colors: gradientAnimation ? buttonGradient1 : buttonGradient2,
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
@@ -364,7 +392,7 @@ struct RegisterView: View {
         .onChange(of: phoneNumber) { _ in validateForm() }
         .onChange(of: password) { _ in validateForm() }
         .onChange(of: confirmPassword) { _ in validateForm() }
-        .accentColor(.blue)
+        .accentColor(primaryColor)
     }
     
     private func register() {
@@ -378,7 +406,8 @@ struct RegisterView: View {
             displayName: displayName,
             phoneNumber: phoneNumber,
             password: password,
-            profilePicture: imageData
+            profilePicture: imageData,
+            serverUrl: serverUrl
         )
     }
     
@@ -421,7 +450,7 @@ struct RegisterView: View {
     }
 }
 
-// MARK: - Animated Icon Text Field
+// MARK: - Animated Icon Text Field - UPDATED to use iconGradientColors array
 struct AnimatedIconTextField: View {
     let title: String
     @Binding var text: String
@@ -473,7 +502,7 @@ struct AnimatedIconTextField: View {
     }
 }
 
-// MARK: - Animated Icon Secure Field
+// MARK: - Animated Icon Secure Field - UPDATED to use iconGradientColors array
 struct AnimatedIconSecureField: View {
     let title: String
     @Binding var text: String
@@ -515,7 +544,7 @@ struct AnimatedIconSecureField: View {
                     Image(systemName: isPasswordVisible ? "eye.slash.fill" : "eye.fill")
                         .foregroundStyle(
                             LinearGradient(
-                                colors: [.gray, .gray.opacity(0.7)],
+                                colors: gradientColors,
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -536,50 +565,6 @@ struct AnimatedIconSecureField: View {
                         lineWidth: 1
                     )
             )
-        }
-    }
-}
-
-// MARK: - Fixed Image Picker
-struct ImagePicker: UIViewControllerRepresentable {
-    @Binding var image: UIImage?
-    @Environment(\.dismiss) var dismiss
-    
-    func makeUIViewController(context: Context) -> PHPickerViewController {
-        var config = PHPickerConfiguration()
-        config.filter = .images
-        config.selectionLimit = 1
-        
-        let picker = PHPickerViewController(configuration: config)
-        picker.delegate = context.coordinator
-        return picker
-    }
-    
-    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-    
-    class Coordinator: NSObject, PHPickerViewControllerDelegate {
-        let parent: ImagePicker
-        
-        init(_ parent: ImagePicker) {
-            self.parent = parent
-        }
-        
-        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-            parent.dismiss()
-            
-            guard let provider = results.first?.itemProvider else { return }
-            
-            if provider.canLoadObject(ofClass: UIImage.self) {
-                provider.loadObject(ofClass: UIImage.self) { image, _ in
-                    DispatchQueue.main.async {
-                        self.parent.image = image as? UIImage
-                    }
-                }
-            }
         }
     }
 }

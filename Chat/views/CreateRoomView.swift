@@ -206,7 +206,7 @@ struct CreateRoomView: View {
 
 // MARK: - User Selection Row
 struct UserSelectionRow: View {
-    let user: APIUser
+    let user: GetAllUsersDM
     let isSelected: Bool
     let onToggle: () -> Void
     

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		56B5A0682ED5ADC800714442 /* SignalRClient in Frameworks */ = {isa = PBXBuildFile; productRef = 56B5A0672ED5ADC800714442 /* SignalRClient */; };
+		56E963402ED7299200273CD7 /* Alamofire in Frameworks */ = {isa = PBXBuildFile; productRef = 56E9633F2ED7299200273CD7 /* Alamofire */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -41,6 +42,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				56B5A0682ED5ADC800714442 /* SignalRClient in Frameworks */,
+				56E963402ED7299200273CD7 /* Alamofire in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -84,6 +86,7 @@
 			name = Chat;
 			packageProductDependencies = (
 				56B5A0672ED5ADC800714442 /* SignalRClient */,
+				56E9633F2ED7299200273CD7 /* Alamofire */,
 			);
 			productName = Chat;
 			productReference = 5612B0B32EC9D0BF000D398D /* Chat.app */;
@@ -115,6 +118,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				56B5A0662ED5ADC800714442 /* XCRemoteSwiftPackageReference "SignalR-Client-Swift" */,
+				56E9633E2ED7299200273CD7 /* XCRemoteSwiftPackageReference "Alamofire" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5612B0B42EC9D0BF000D398D /* Products */;
@@ -360,6 +364,14 @@
 				minimumVersion = 1.2.0;
 			};
 		};
+		56E9633E2ED7299200273CD7 /* XCRemoteSwiftPackageReference "Alamofire" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Alamofire/Alamofire";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.10.2;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -367,6 +379,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 56B5A0662ED5ADC800714442 /* XCRemoteSwiftPackageReference "SignalR-Client-Swift" */;
 			productName = SignalRClient;
+		};
+		56E9633F2ED7299200273CD7 /* Alamofire */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 56E9633E2ED7299200273CD7 /* XCRemoteSwiftPackageReference "Alamofire" */;
+			productName = Alamofire;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

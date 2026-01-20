@@ -4,8 +4,8 @@ import Foundation
 class GroupRoomViewModel: ObservableObject {
     @Published var groupRooms: [GroupRoom] = []
     @Published var currentRoom: GroupRoom?
-    @Published var availableUsers: [APIUser] = []
-    @Published var selectedUsers: [APIUser] = []
+    @Published var availableUsers: [GetAllUsersDM] = []
+    @Published var selectedUsers: [GetAllUsersDM] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var successMessage: String?
@@ -148,7 +148,7 @@ class GroupRoomViewModel: ObservableObject {
             .store(in: &cancellables)
     }
     
-    func selectUser(_ user: APIUser) {
+    func selectUser(_ user: GetAllUsersDM) {
         if !selectedUsers.contains(where: { $0.id == user.id }) {
             selectedUsers.append(user)
             availableUsers.removeAll { $0.id == user.id }
@@ -156,7 +156,7 @@ class GroupRoomViewModel: ObservableObject {
         }
     }
     
-    func deselectUser(_ user: APIUser) {
+    func deselectUser(_ user: GetAllUsersDM) {
         selectedUsers.removeAll { $0.id == user.id }
         if user.id != getCurrentUserId() && !availableUsers.contains(where: { $0.id == user.id }) {
             availableUsers.append(user)
