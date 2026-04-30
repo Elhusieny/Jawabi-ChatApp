@@ -1,17 +1,26 @@
-
 import Foundation
 import Combine
-class GetAllUsersService:AuthHeaderAdding {
+
+/// Service responsible for fetching all users from the chat system
+class GetAllUsersService: AuthHeaderAdding {
+    /// Shared singleton instance
     static let shared = GetAllUsersService()
+    
+    /// Base URL for API endpoints
     let baseURL = Utilities.baseURL
     
-    // Always read from UserDefaults
+    /// Computed property to retrieve authentication token from UserDefaults
     var token: String? {
         return UserDefaults.standard.string(forKey: "authToken")
     }
+    
+    /// Private initializer for singleton pattern
     private init() {}
     
-    // MARK: - Get All Users (with authentication)
+    // MARK: - Get All Users
+    
+    /// Fetches all users available in the system
+    /// - Returns: A publisher that emits an array of GetAllUsersDM or an error
     func getAllUsers() -> AnyPublisher<[GetAllUsersDM], Error> {
         guard let url = URL(string: "\(baseURL)/api/Chat/GetAllUsers") else {
             return Fail(error: NetworkError.invalidURL).eraseToAnyPublisher()
@@ -45,7 +54,7 @@ class GetAllUsersService:AuthHeaderAdding {
                 if let responseString = String(data: data, encoding: .utf8) {
                     print("📦 Raw Response: \(responseString)")
                     
-                    // If we get a 401, check what the response says
+                    // Check for authentication issues
                     if httpResponse.statusCode == 401 {
                         print("🔐 Authentication failed. Server response: \(responseString)")
                     }
@@ -71,7 +80,7 @@ class GetAllUsersService:AuthHeaderAdding {
                     return usersResponse.result
                 } catch {
                     print("❌ Decoding error: \(error)")
-                    // Try alternative decoding if the main one fails
+                    // Try alternative decoding as direct array if wrapped response fails
                     do {
                         let users = try JSONDecoder().decode([GetAllUsersDM].self, from: data)
                         print("✅ Successfully decoded \(users.count) users as direct array")

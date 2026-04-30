@@ -1,3 +1,4 @@
+
 //
 //  NetworkService.swift
 //  Chat
@@ -5,18 +6,28 @@
 //  Created by Ahmed Elhussieny on 23/11/2025.
 //
 
-
 import Foundation
 import Combine
-class PrivateChatService:AuthHeaderAdding {
+
+/// Service responsible for creating private chats between users
+class PrivateChatService: AuthHeaderAdding {
+    /// Shared singleton instance
     static let shared = PrivateChatService()
+    
+    /// Base URL for API endpoints
     let baseURL = Utilities.baseURL
     
-    // Remove the stored token property and always read from UserDefaults
-     var token: String? {
+    /// Computed property to retrieve authentication token from UserDefaults
+    var token: String? {
         return UserDefaults.standard.string(forKey: "authToken")
     }
+    
+    /// Private initializer for singleton pattern
     private init() {}
+    
+    /// Creates a private chat with another user
+    /// - Parameter userId: The ID of the user to create a chat with
+    /// - Returns: A publisher that emits a ChatResponse or an error
     func createPrivateChat(with userId: String) -> AnyPublisher<ChatResponse, Error> {
         guard let url = URL(string: "\(baseURL)/api/Chat/PrivateChat") else {
             return Fail(error: NetworkError.invalidURL).eraseToAnyPublisher()
@@ -29,7 +40,7 @@ class PrivateChatService:AuthHeaderAdding {
         
         print("💬 Creating private chat with user: \(userId)")
         
-        // Try sending the user ID as a raw string
+        // Send user ID as raw string (matches server expectation)
         if let jsonData = "\"\(userId)\"".data(using: .utf8) {
             urlRequest.httpBody = jsonData
             print("📦 Sending raw string: \"\(userId)\"")
@@ -63,3 +74,5 @@ class PrivateChatService:AuthHeaderAdding {
             .eraseToAnyPublisher()
     }
 }
+
+

@@ -30,13 +30,12 @@ struct ProfileInfoView: View {
                 // Name Field
                 profileField(
                     title: "Name",
-                    value: userProfile?.name ?? "Unknown",
+                    value: userProfile?.displayName ?? "Unknown",
                     isEditing: isEditingProfile,
                     binding: tempName,
-                    placeholder: "Enter your name",
-                    autocapitalization: .words,
-                    keyboardType: .default
+                    placeholder: "Enter your name"
                 )
+                .autocapitalization(.words)
                 
                 // Email Field
                 profileField(
@@ -44,10 +43,10 @@ struct ProfileInfoView: View {
                     value: userProfile?.email ?? "No email",
                     isEditing: isEditingProfile,
                     binding: tempEmail,
-                    placeholder: "Enter your email",
-                    autocapitalization: .none,
-                    keyboardType: .emailAddress
+                    placeholder: "Enter your email"
                 )
+                .keyboardType(.emailAddress)
+                .autocapitalization(.none)
                 
                 // Phone Field
                 profileField(
@@ -55,10 +54,10 @@ struct ProfileInfoView: View {
                     value: formatPhoneNumber(userProfile?.phoneNumber ?? ""),
                     isEditing: isEditingProfile,
                     binding: tempPhoneNumber,
-                    placeholder: "Enter your phone number",
-                    autocapitalization: .none,
-                    keyboardType: .phonePad
+                    placeholder: "Enter your phone number"
                 )
+                .keyboardType(.phonePad)
+                .autocapitalization(.none)
             }
             
             if isEditingProfile {
@@ -71,14 +70,13 @@ struct ProfileInfoView: View {
         .shadow(color: .black.opacity(0.05), radius: 5)
     }
     
+    @ViewBuilder
     private func profileField(
         title: String,
         value: String,
         isEditing: Bool,
         binding: Binding<String>,
-        placeholder: String,
-        autocapitalization: TextInputAutocapitalization,
-        keyboardType: UIKeyboardType
+        placeholder: String
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
@@ -88,8 +86,6 @@ struct ProfileInfoView: View {
             if isEditing {
                 TextField(placeholder, text: binding)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .autocapitalization(autocapitalization)
-                    .keyboardType(keyboardType)
             } else {
                 Text(value)
                     .font(.body)

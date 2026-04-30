@@ -1,3 +1,11 @@
+//
+//  VoiceMessageBubble.swift
+//  Chat
+//
+//  Created by Ahmed Elhussieny on 21/04/2026.
+//
+
+
 import SwiftUI
 import AVFoundation
 

@@ -1,3 +1,11 @@
+//
+//  JWTTokenParser.swift
+//  Chat
+//
+//  Created by Ahmed Elhussieny on 02/02/2026.
+//
+
+
 import Foundation
 
 // ✅ Helper to parse JWT token and extract profile picture URL

@@ -263,7 +263,13 @@ class AuthViewModel: ObservableObject {
             
             // Load user info after login
             self.loadUserInfo()
-            
+            // ✅ ADD THIS — send any pending FCM token now that we're authenticated
+                   FCMTokenService.shared.sendPendingTokenIfNeeded()
+                   //print(" ffff \(FCMTokenService.shared.sendPendingTokenIfNeeded()")
+                   NotificationCenter.default.post(
+                       name: NSNotification.Name("UserDidLogin"),
+                       object: nil
+                   )
             // Notify that authentication changed (for SignalR to reconnect)
             NotificationCenter.default.post(
                 name: NSNotification.Name("UserDidLogin"),
@@ -351,15 +357,7 @@ class AuthViewModel: ObservableObject {
     
     // MARK: - Registration
     
-    /// Registers a new user account
-    /// - Parameters:
-    ///   - userName: The username for the new account
-    ///   - email: The email address for the new account
-    ///   - displayName: The display name for the new account
-    ///   - phoneNumber: The phone number for the new account
-    ///   - password: The password for the new account
-    ///   - profilePicture: Optional profile picture data
-    ///   - serverUrl: Optional custom server URL
+ 
     func register(userName: String, email: String, displayName: String, phoneNumber: String, password: String, profilePicture: Data?, serverUrl: String?) {
         isLoading = true
         errorMessage = nil

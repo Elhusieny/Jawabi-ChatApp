@@ -36,34 +36,35 @@ struct GetAllUsersDM: Codable, Identifiable {
     let pictureUrl: String
     let phoneNumber: String
     
+    // MARK: - Update GetAllUsersDM model with FIXED logic
     var fullPictureUrl: String {
-        print("🖼️ Building URL for \(name): original='\(pictureUrl)'")
-        
-        // If empty or contains default.png, return empty
-        if pictureUrl.isEmpty || pictureUrl.contains("default.png") {
-            print("   ➡️ Returning empty string (default image)")
-            return ""
-        }
-        
-        // If it's already a full URL, return as is
-        if pictureUrl.hasPrefix("http://") || pictureUrl.hasPrefix("https://") {
-            print("   ➡️ Already full URL: \(pictureUrl)")
-            return pictureUrl
-        }
-        
-        // If it starts with /uploads
-        if pictureUrl.hasPrefix("/uploads") {
-            let fullUrl = "http://158.220.90.131:8444" + pictureUrl
-            print("   ➡️ Built URL: \(fullUrl)")
-            return fullUrl
-        }
-        
-        // Otherwise, assume it's a relative path
-        let fullUrl = "http://158.220.90.131:8444/uploads/users/\(pictureUrl)"
-        print("   ➡️ Built URL from relative: \(fullUrl)")
-        return fullUrl
+           let baseUrl = "http://158.220.90.131:8444"
+           
+           // If pictureUrl is empty or ends with default.png, use default image
+           if pictureUrl.isEmpty || pictureUrl.hasSuffix("default.png") {
+               return "\(baseUrl)/uploads/users/default.png"
+           }
+           
+           // If it's already a full URL, return as is
+           if pictureUrl.hasPrefix("http://") || pictureUrl.hasPrefix("https://") {
+               return pictureUrl
+           }
+           
+           // If it starts with /uploads
+           if pictureUrl.hasPrefix("/uploads") {
+               return baseUrl + pictureUrl
+           }
+           
+           // If it's just a filename
+           return "\(baseUrl)/uploads/users/\(pictureUrl)"
+       }
+       
+       // Helper to check if it's a default image - CORRECT LOGIC
+       var isDefaultImage: Bool {
+           // Check if it ends with "default.png" (handles both "default.png" and "/uploads/users/default.png")
+           return pictureUrl.isEmpty || pictureUrl.hasSuffix("default.png")
+       }
     }
-}
 
 // MARK: - App User Model (for registration/login)
 struct UserRegesterationDM: Codable, Identifiable {
@@ -108,6 +109,7 @@ struct RegisterRequest {
     let serverUrl:String?
 }
 
+
 // MARK: - Chat Model with Unread Count & Online Status
 struct Chat: Codable, Identifiable {
     let id: Int
@@ -118,14 +120,32 @@ struct Chat: Codable, Identifiable {
     let users: [ChatUser]
     var unreadCount: Int // Add unread counter
     var isOnline: Bool // Add online status
-    
     var fullPictureUrl: String {
-        if pictureUrl.hasPrefix("http") {
-            return pictureUrl
-        } else {
-            return "http://158.220.90.131:8444\(pictureUrl)"
+            let baseUrl = "http://158.220.90.131:8444"
+            
+            // If empty or ends with default.png, return default
+            if pictureUrl.isEmpty || pictureUrl.hasSuffix("default.png") {
+                return "\(baseUrl)/uploads/users/default.png"
+            }
+            
+            // If it's already a full URL, return as is
+            if pictureUrl.hasPrefix("http://") || pictureUrl.hasPrefix("https://") {
+                return pictureUrl
+            }
+            
+            // If it starts with /uploads
+            if pictureUrl.hasPrefix("/uploads") {
+                return baseUrl + pictureUrl
+            }
+            
+            // Otherwise, assume it's a relative path
+            return baseUrl + pictureUrl
         }
-    }
+        
+        // Also add a helper to check if it's a default image
+        var isDefaultImage: Bool {
+            return pictureUrl.isEmpty || pictureUrl.hasSuffix("default.png")
+        }
     
     // Custom initializer to handle optional unread/online from API
     init(id: Int, name: String, pictureUrl: String, type: Int,
@@ -146,17 +166,22 @@ struct Chat: Codable, Identifiable {
         case id, name, pictureUrl, type, messages, users, unreadCount, isOnline
     }
     
+    // In Chat.swift - change the init(from decoder:)
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(Int.self, forKey: .id)
-        name = try container.decode(String.self, forKey: .name)
-        pictureUrl = try container.decode(String.self, forKey: .pictureUrl)
-        type = try container.decode(Int.self, forKey: .type)
+        
+        // 👇 Use decodeIfPresent with a fallback for null name
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Unknown"
+        
+        pictureUrl = try container.decodeIfPresent(String.self, forKey: .pictureUrl) ?? ""
+        type = try container.decodeIfPresent(Int.self, forKey: .type) ?? 0
         messages = try container.decodeIfPresent([Message].self, forKey: .messages) ?? []
         users = try container.decodeIfPresent([ChatUser].self, forKey: .users) ?? []
         unreadCount = try container.decodeIfPresent(Int.self, forKey: .unreadCount) ?? 0
         isOnline = try container.decodeIfPresent(Bool.self, forKey: .isOnline) ?? false
     }
+    
 }
 
 // MARK: - 1. Add SeenStatus Model to Models file
@@ -223,6 +248,11 @@ struct ReceivedPrivateMessage: Codable {
     let MessageId: Int? // Add message ID from server
     let messageId: Int?
     
+       // ✅ ADD THESE FIELDS (they come from your server log)
+       let isFile: Bool?
+       let isSafe: Bool?
+       let fileUrl: String?
+    
     var name: String {
         return from ?? From ?? "Unknown"
     }
@@ -261,41 +291,35 @@ struct UserStatus {
     let lastSeen: Date?
 }
 
-// MARK: - API Response Models
 struct GetAllChatsResponse: Codable {
     let id: Int
-    let name: String
-    let pictureUrl: String
+    let name: String?           // ← make optional
+    let pictureUrl: String?     // ← harden this too
     let lastMessage: LastMessage?
-    let unreadCount: Int
-    let isOnline: Bool
-    let type: Int
+    let unreadCount: Int?
+    let isOnline: Bool?
+    let type: Int?
     
     struct LastMessage: Codable {
-        let text: String
-        let time: String
+        let text: String?       // ← also harden nested fields
+        let time: String?
     }
     
-    // Convert API response to Chat model
     func toChat() -> Chat {
-        let message = lastMessage.map { lastMsg -> Message in
-            Message(
-                id: 0, // Temporary ID for last message preview
-                text: lastMsg.text,
-                name: name,
-                timestamp: lastMsg.time
-            )
+        let message = lastMessage.flatMap { lastMsg -> Message? in
+            guard let text = lastMsg.text, let time = lastMsg.time else { return nil }
+            return Message(id: 0, text: text, name: name ?? "Unknown", timestamp: time)
         }
         
         return Chat(
             id: id,
-            name: name,
-            pictureUrl: pictureUrl,
-            type: type,
+            name: name ?? "Unknown",            // ← fallback here
+            pictureUrl: pictureUrl ?? "",
+            type: type ?? 1,
             messages: message.map { [$0] } ?? [],
             users: [],
-            unreadCount: unreadCount,
-            isOnline: isOnline
+            unreadCount: unreadCount ?? 0,
+            isOnline: isOnline ?? false
         )
     }
 }
@@ -327,5 +351,80 @@ extension Chat {
         return type == 1 &&
                users.count == 2 &&
                containsUser(userId: userId)
+    }
+}
+
+
+// MARK: - New Models for File Scan and Message Seen Status
+
+struct ScannedFileResult: Codable {
+    let isSafe: Bool
+    let virusFound: Bool
+    let message: String
+    let fileUrl: String?
+    let originalFileName: String
+    
+    enum CodingKeys: String, CodingKey {
+        case isSafe
+        case virusFound
+        case message
+        case fileUrl
+        case originalFileName
+    }
+}
+// MARK: - Updated Models for File Scan and Message Seen Status
+
+struct FileStatusUpdatedData: Codable {
+    let messageId: Int
+    let fileUrl: String
+    let isSafe: Bool
+    let fileName: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case messageId
+        case fileUrl
+        case isSafe
+        case fileName
+    }
+}
+
+struct MessageWithSeenStatus: Codable, Identifiable {
+    let id: Int
+    let from: String
+    let text: String
+    let timeStamp: String
+    let isRead: Bool
+    let isFile: Bool
+    let isSafe: Bool
+    let fileUrl: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case from
+        case text
+        case timeStamp
+        case isRead
+        case isFile
+        case isSafe
+        case fileUrl
+    }
+}
+
+// MARK: - Blocked Message Tracking
+struct BlockedMessageInfo {
+    let messageId: Int
+    let text: String
+    let sender: String
+    let timestamp: Date
+    let reason: String
+}
+
+struct ErrorMessage: Codable {
+    let message: String
+    let chatId: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case message
+        case chatId
     }
 }

@@ -1,3 +1,11 @@
+//
+//  VoiceRecorderService.swift
+//  Chat
+//
+//  Created by Ahmed Elhussieny on 21/04/2026.
+//
+
+
 import AVFoundation
 import Combine
 
@@ -47,7 +55,22 @@ class VoiceRecorderService: NSObject, ObservableObject {
 
         return url
     }
-
+    func requestPermission(completion: @escaping (Bool) -> Void) {
+        switch AVAudioSession.sharedInstance().recordPermission {
+        case .granted:
+            completion(true)
+        case .denied:
+            completion(false)
+        case .undetermined:
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                DispatchQueue.main.async {
+                    completion(granted)
+                }
+            }
+        @unknown default:
+            completion(false)
+        }
+    }
     func stopRecording() -> URL? {
         audioRecorder?.stop()
         timer?.invalidate()

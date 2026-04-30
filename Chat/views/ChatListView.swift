@@ -1,32 +1,66 @@
 import SwiftUI
 
+/// Main view displaying the list of user's chats with real-time updates and navigation
 struct ChatListView: View {
+    // MARK: - Environment & State Properties
+    
+    /// ViewModel for authentication state
     @EnvironmentObject var authViewModel: AuthViewModel
-    @StateObject private var chatViewModel = ChatViewModel() // Keep as StateObject
+    
+    /// ViewModel for chat operations and real-time updates (owned by this view)
+    @StateObject private var chatViewModel = ChatViewModel()
+    
+    /// Controls presentation of new chat creation sheet
     @State private var showingNewChat = false
+    
+    /// Controls presentation of room creation sheet
     @State private var showingCreateRoom = false
+    
+    /// Controls presentation of user profile sheet
     @State private var showingProfile = false
+    
+    /// Controls presentation of search interface
     @State private var showingSearch = false
+    
+    /// Current search text for filtering chats
     @State private var searchText = ""
+    
+    /// Animation state for gradient backgrounds
     @State private var gradientAnimation = false
+    
+    /// Unique identifier for forcing view refresh
     @State private var refreshID = UUID()
+    
+    /// Timestamp of last list update
     @State private var lastUpdateTime = Date()
     
-    // Add this state to track new chats
+    /// ViewModel for profile picture operations
+    @EnvironmentObject var profilePictureVM: ProfilePictureViewModel
+    
+    /// Alert state for new chat notifications
     @State private var newChatAlert: (isPresented: Bool, chatName: String) = (false, "")
     
-    // ADD THIS: Track navigation to prevent duplicate navigation
+    /// Flag to prevent duplicate navigation
     @State private var isNavigatingToChat = false
+    
+    /// Currently selected chat ID for navigation
     @State private var selectedChatId: Int?
     
+    /// Force refresh toggle
     @State private var forceUpdate = false
     
-    // Define the main color as static computed properties
+    /// Controls presentation of settings view
+       @State private var showingSettings = false
+    /// Primary brand color
     private var primaryColor: Color { Color(hex: "#7373d2") }
+    
+    /// Light variant of primary color
     private var primaryColorLight: Color { primaryColor.opacity(0.2) }
+    
+    /// Dark variant of primary color
     private var primaryColorDark: Color { primaryColor.opacity(0.8) }
     
-    // Computed gradient colors
+    /// First gradient color set for animation
     private var gradientColors1: [Color] {
         [
             primaryColor.opacity(0.1),
@@ -35,6 +69,7 @@ struct ChatListView: View {
         ]
     }
     
+    /// Second gradient color set for animation
     private var gradientColors2: [Color] {
         [
             Color(hex: "#9d73d2").opacity(0.1),
@@ -43,10 +78,14 @@ struct ChatListView: View {
         ]
     }
     
+    /// Gradient colors for icons
     private var iconGradientColors: [Color] {
         [primaryColor, Color(hex: "#9d73d2"), Color(hex: "#d273a3")]
     }
     
+    // MARK: - Computed Properties
+    
+    /// Filters chats based on search text
     var filteredChats: [Chat] {
         if searchText.isEmpty {
             return chatViewModel.chats
@@ -58,92 +97,104 @@ struct ChatListView: View {
         }
     }
     
+    
+    // MARK: - Body
+    
     var body: some View {
         NavigationStack {
-            ZStack {
-                // Animated Background
-                LinearGradient(
-                    colors: gradientAnimation ? gradientColors1 : gradientColors2,
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+            if #available(iOS 17.0, *) {
+                ZStack {
+                    // Animated Background
+                    LinearGradient(
+                        colors: gradientAnimation ? gradientColors1 : gradientColors2,
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .ignoresSafeArea()
+                    .onAppear {
+                        withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
+                            gradientAnimation.toggle()
+                        }
+                    }
+                    if chatViewModel.chats.isEmpty {
+                        emptyStateView
+                    } else {
+                        chatListView
+                            .id(refreshID)
+                            .id(forceUpdate) // Force refresh when this changes
+                    }
+                }
+                .navigationTitle("Chats")
+                .navigationBarTitleDisplayMode(.large)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        profileButton
+                    }
+                    
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        HStack(spacing: 16) {
+                            searchButton
+                            menuButton
+                        }
+                    }
+                }
+                .searchable(text: $searchText, isPresented: $showingSearch, prompt: "Search chats...")
+                .sheet(isPresented: $showingNewChat) {
+                    NewChatView(chatViewModel: chatViewModel, isPresented: $showingNewChat)
+                }
+                .sheet(isPresented: $showingCreateRoom) {
+                    CreateRoomView()
+                }
+                .sheet(isPresented: $showingProfile) {
+                    ProfileView(authViewModel: authViewModel, isPresented: $showingProfile)
+                }
+                // NEW: Settings sheet
+                .sheet(isPresented: $showingSettings) {
+                    SettingsView()
+                        .environmentObject(authViewModel)
+                }
                 .onAppear {
-                    withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
-                        gradientAnimation.toggle()
+                    chatViewModel.loadSavedChats()
+                    // ⚠️ Comment out notification observer - we're using @Published
+                    // setupChatListObservers()
+                    print("📱 ChatListView appeared with \(chatViewModel.chats.count) chats")
+                }
+                // FIXED: Watch for ANY changes to chats array
+                .onChange(of: chatViewModel.chats) { newChats in
+                    refreshID = UUID()
+                    forceUpdate.toggle()
+                    lastUpdateTime = Date()
+                    print("🔄 Chat list CHANGED - now has \(newChats.count) chats")
+                    
+                    // Debug: Print unread counts
+                    for chat in newChats {
+                        if chat.unreadCount > 0 {
+                            print("📢 Chat \(chat.name) has \(chat.unreadCount) unread messages")
+                        }
                     }
                 }
-                if chatViewModel.chats.isEmpty {
-                                 emptyStateView
-                             } else {
-                                 chatListView
-                                     .id(refreshID)
-                                     .id(forceUpdate) // Force refresh when this changes
-                             }
-                         }
-            .navigationTitle("Chats")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    profileButton
+                // FIXED: Also watch for chatsUpdated timestamp
+                .onChange(of: chatViewModel.chatsUpdated) { _ in
+                    print("🔄 chatsUpdated triggered UI refresh")
+                    refreshID = UUID()
+                    forceUpdate.toggle()
                 }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 16) {
-                        searchButton
-                        menuButton
+                // Optional: Alert for new chats
+                .alert("New Chat", isPresented: $newChatAlert.isPresented) {
+                    Button("OK", role: .cancel) { }
+                } message: {
+                    Text("You have a new chat with \(newChatAlert.chatName)")
+                }
+                // ADD ALERT FOR ERRORS
+                .alert("Error", isPresented: .constant(chatViewModel.errorMessage != nil)) {
+                    Button("OK", role: .cancel) {
+                        chatViewModel.errorMessage = nil
                     }
+                } message: {
+                    Text(chatViewModel.errorMessage ?? "Unknown error")
                 }
-            }
-            .searchable(text: $searchText, isPresented: $showingSearch, prompt: "Search chats...")
-            .sheet(isPresented: $showingNewChat) {
-                NewChatView(chatViewModel: chatViewModel, isPresented: $showingNewChat)
-            }
-            .sheet(isPresented: $showingCreateRoom) {
-                CreateRoomView()
-            }
-            .sheet(isPresented: $showingProfile) {
-                ProfileView(authViewModel: authViewModel, isPresented: $showingProfile)
-            }
-            .onAppear {
-                           chatViewModel.loadSavedChats()
-                           // ⚠️ Comment out notification observer - we're using @Published
-                           // setupChatListObservers()
-                           print("📱 ChatListView appeared with \(chatViewModel.chats.count) chats")
-                       }
-                       // FIXED: Watch for ANY changes to chats array
-                       .onChange(of: chatViewModel.chats) { newChats in
-                           refreshID = UUID()
-                           forceUpdate.toggle()
-                           lastUpdateTime = Date()
-                           print("🔄 Chat list CHANGED - now has \(newChats.count) chats")
-                           
-                           // Debug: Print unread counts
-                           for chat in newChats {
-                               if chat.unreadCount > 0 {
-                                   print("📢 Chat \(chat.name) has \(chat.unreadCount) unread messages")
-                               }
-                           }
-                       }
-                       // FIXED: Also watch for chatsUpdated timestamp
-                       .onChange(of: chatViewModel.chatsUpdated) { _ in
-                           print("🔄 chatsUpdated triggered UI refresh")
-                           refreshID = UUID()
-                           forceUpdate.toggle()
-                       }
-            // Optional: Alert for new chats
-            .alert("New Chat", isPresented: $newChatAlert.isPresented) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("You have a new chat with \(newChatAlert.chatName)")
-            }
-            // ADD ALERT FOR ERRORS
-            .alert("Error", isPresented: .constant(chatViewModel.errorMessage != nil)) {
-                Button("OK", role: .cancel) {
-                    chatViewModel.errorMessage = nil
-                }
-            } message: {
-                Text(chatViewModel.errorMessage ?? "Unknown error")
+            } else {
+                // Fallback on earlier versions
             }
         }
         .accentColor(primaryColor)
@@ -348,64 +399,106 @@ struct ChatListView: View {
         }
     }
     
-    private var menuButton: some View {
-        Menu {
-            Button(action: {
-                guard UserDefaults.standard.string(forKey: "authToken") != nil else {
-                    showAlert(title: "Authentication Required",
-                             message: "Please log in to create a new chat")
-                    return
-                }
-                
-                showingNewChat = true
-                chatViewModel.loadAllUsers()
-            }) {
-                Label("New Chat", systemImage: "message")
-            }
-            
-            Button(action: {
-                guard UserDefaults.standard.string(forKey: "authToken") != nil else {
-                    showAlert(title: "Authentication Required",
-                             message: "Please log in to create a room")
-                    return
-                }
-                showingCreateRoom = true
-            }) {
-                Label("Create Room", systemImage: "person.2")
-            }
-            Divider()
-        } label: {
-            ZStack {
-                Circle()
-                    .fill(primaryColorLight)
-                    .frame(width: 36, height: 36)
-                
-                Image(systemName: "ellipsis.circle")
-                    .font(.title3)
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: iconGradientColors,
-                            startPoint: gradientAnimation ? .top : .leading,
-                            endPoint: gradientAnimation ? .bottom : .trailing
-                        )
-                    )
-                    .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: gradientAnimation)
-            }
-        }
-    }
-    
-    // Add this helper function to show alerts
-    private func showAlert(title: String, message: String) {
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        
-        // Present the alert
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let rootViewController = windowScene.windows.first?.rootViewController {
-            rootViewController.present(alert, animated: true)
-        }
-    }
-    
+    // UPDATED: Menu button with settings option
+       private var menuButton: some View {
+           Menu {
+               Section {
+                   Button(action: {
+                       guard UserDefaults.standard.string(forKey: "authToken") != nil else {
+                           showAlert(title: "Authentication Required",
+                                    message: "Please log in to create a new chat")
+                           return
+                       }
+                       
+                       showingNewChat = true
+                       chatViewModel.loadAllUsers()
+                   }) {
+                       Label("New Chat", systemImage: "message")
+                   }
+                   
+                   Button(action: {
+                       guard UserDefaults.standard.string(forKey: "authToken") != nil else {
+                           showAlert(title: "Authentication Required",
+                                    message: "Please log in to create a room")
+                           return
+                       }
+                       showingCreateRoom = true
+                   }) {
+                       Label("Create Room", systemImage: "person.2")
+                   }
+               }
+               
+               Divider()
+               
+               // NEW: Settings option
+               Section {
+                   Button(action: {
+                       showingSettings = true
+                   }) {
+                       Label("Settings", systemImage: "gear")
+                   }
+                   
+                   Button(action: {
+                       showingProfile = true
+                   }) {
+                       Label("Account", systemImage: "person.circle")
+                   }
+               }
+               
+               Divider()
+               
+               // Help & Support section
+               Section {
+                   Button(action: {
+                       // Help action
+                       if let url = URL(string: "https://yourapp.com/help") {
+                           UIApplication.shared.open(url)
+                       }
+                   }) {
+                       Label("Help", systemImage: "questionmark.circle")
+                   }
+                   
+                   Button(action: {
+                       // Feedback action
+                       if let url = URL(string: "mailto:support@yourapp.com") {
+                           UIApplication.shared.open(url)
+                       }
+                   }) {
+                       Label("Send Feedback", systemImage: "envelope")
+                   }
+               }
+           } label: {
+               ZStack {
+                   Circle()
+                       .fill(primaryColorLight)
+                       .frame(width: 36, height: 36)
+                   
+                   Image(systemName: "ellipsis.circle")
+                       .font(.title3)
+                       .foregroundStyle(
+                           LinearGradient(
+                               colors: iconGradientColors,
+                               startPoint: gradientAnimation ? .top : .leading,
+                               endPoint: gradientAnimation ? .bottom : .trailing
+                           )
+                       )
+                       .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: gradientAnimation)
+               }
+           }
+       }
+       
+       // Helper function to show alerts
+       private func showAlert(title: String, message: String) {
+           let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+           alert.addAction(UIAlertAction(title: "OK", style: .default))
+           
+           // Present the alert
+           if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootViewController = windowScene.windows.first?.rootViewController {
+               rootViewController.present(alert, animated: true)
+           }
+       }
+       
     private var loadingOverlay: some View {
         ZStack {
             Color.black.opacity(0.1)
@@ -441,6 +534,12 @@ struct ChatRow: View {
     let primaryColor: Color
     @ObservedObject var chatViewModel: ChatViewModel
     
+    // Add computed property for user initials
+    private var userInitials: String {
+        return chat.name.getInitials()
+    }
+    
+   
     // FIXED: Add @State to force updates
     @State private var updateTrigger = false
     
@@ -471,30 +570,57 @@ struct ChatRow: View {
     var body: some View {
         HStack(spacing: 16) {
             // Profile Image with online indicator
+            // In ChatRow struct, update the AsyncImage part:
             ZStack(alignment: .bottomTrailing) {
-                AsyncImage(url: URL(string: chat.fullPictureUrl)) { phase in
-                    switch phase {
-                    case .empty:
+                // In the default image view, use:
+                Text(userInitials)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: iconGradientColors,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                // User profile image
+                if chat.type == 1 { // Private chat
+                    if chat.fullPictureUrl.isEmpty || chat.fullPictureUrl.contains("default.png") {
+                        // Show default image with gradient
                         Circle()
                             .fill(
                                 LinearGradient(
-                                    colors: [primaryColor.opacity(0.2), Color(hex: "#9d73d2").opacity(0.2)],
+                                    colors: [primaryColor.opacity(0.3), Color(hex: "#9d73d2").opacity(0.3)],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
                             )
                             .frame(width: 56, height: 56)
                             .overlay(
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                    .tint(primaryColor)
+                                // Show user initials or icon
+                                Group {
+                                    if let firstChar = chat.name.first {
+                                        Text(String(firstChar))
+                                            .font(.system(size: 20, weight: .bold))
+                                            .foregroundStyle(
+                                                LinearGradient(
+                                                    colors: iconGradientColors,
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                    } else {
+                                        Image(systemName: "person.fill")
+                                            .font(.title2)
+                                            .foregroundStyle(
+                                                LinearGradient(
+                                                    colors: iconGradientColors,
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                    }
+                                }
                             )
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 56, height: 56)
-                            .clipShape(Circle())
                             .overlay(
                                 Circle()
                                     .stroke(
@@ -506,41 +632,153 @@ struct ChatRow: View {
                                         lineWidth: 2
                                     )
                             )
-                    case .failure:
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [primaryColor.opacity(0.2), Color(hex: "#9d73d2").opacity(0.2)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 56, height: 56)
-                            .overlay(
-                                Image(systemName: "person.fill")
-                                    .font(.title2)
-                                    .foregroundStyle(
+                    } else {
+                        // Try to load the actual image
+                        AsyncImage(url: URL(string: chat.fullPictureUrl)) { phase in
+                            switch phase {
+                            case .empty:
+                                Circle()
+                                    .fill(
                                         LinearGradient(
-                                            colors: iconGradientColors,
+                                            colors: [primaryColor.opacity(0.2), Color(hex: "#9d73d2").opacity(0.2)],
                                             startPoint: .topLeading,
                                             endPoint: .bottomTrailing
                                         )
                                     )
-                            )
-                    @unknown default:
-                        EmptyView()
+                                    .frame(width: 56, height: 56)
+                                    .overlay(
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                            .tint(primaryColor)
+                                    )
+                                    .overlay(
+                                        Circle()
+                                            .stroke(
+                                                LinearGradient(
+                                                    colors: [primaryColor.opacity(0.3), Color(hex: "#9d73d2").opacity(0.3)],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                ),
+                                                lineWidth: 1
+                                            )
+                                    )
+                                
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 56, height: 56)
+                                    .clipShape(Circle())
+                                    .overlay(
+                                        Circle()
+                                            .stroke(
+                                                LinearGradient(
+                                                    colors: [primaryColor, Color(hex: "#9d73d2")],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                ),
+                                                lineWidth: 2
+                                            )
+                                    )
+                                
+                            case .failure:
+                                // Fallback to default image
+                                Circle()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [primaryColor.opacity(0.3), Color(hex: "#9d73d2").opacity(0.3)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(width: 56, height: 56)
+                                    .overlay(
+                                        Group {
+                                            if let firstChar = chat.name.first {
+                                                Text(String(firstChar))
+                                                    .font(.system(size: 20, weight: .bold))
+                                                    .foregroundStyle(
+                                                        LinearGradient(
+                                                            colors: iconGradientColors,
+                                                            startPoint: .topLeading,
+                                                            endPoint: .bottomTrailing
+                                                        )
+                                                    )
+                                            } else {
+                                                Image(systemName: "person.fill")
+                                                    .font(.title2)
+                                                    .foregroundStyle(
+                                                        LinearGradient(
+                                                            colors: iconGradientColors,
+                                                            startPoint: .topLeading,
+                                                            endPoint: .bottomTrailing
+                                                        )
+                                                    )
+                                            }
+                                        }
+                                    )
+                                    .overlay(
+                                        Circle()
+                                            .stroke(
+                                                LinearGradient(
+                                                    colors: [primaryColor, Color(hex: "#9d73d2")],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                ),
+                                                lineWidth: 2
+                                            )
+                                    )
+                                
+                            @unknown default:
+                                EmptyView()
+                            }
+                        }
                     }
+                } else {
+                    // Group chat - show multiple people icon
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(hex: "#73d2a3").opacity(0.3), Color(hex: "#9d73d2").opacity(0.3)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 56, height: 56)
+                        .overlay(
+                            Image(systemName: "person.2.fill")
+                                .font(.title2)
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [Color(hex: "#73d2a3"), Color(hex: "#9d73d2")],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
+                        .overlay(
+                            Circle()
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [Color(hex: "#73d2a3"), Color(hex: "#9d73d2")],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 2
+                                )
+                        )
                 }
                 
-                if chat.type == 1 {
+                // Online indicator for private chats
+                if chat.type == 1 && chat.isOnline {
                     Circle()
-                        .fill(isOnline ? Color.green : Color.gray)
+                        .fill(Color.green)
                         .frame(width: 14, height: 14)
                         .overlay(
                             Circle()
                                 .stroke(Color(.systemBackground), lineWidth: 2.5)
                         )
-                        .shadow(color: isOnline ? Color.green.opacity(0.5) : Color.clear, radius: 4)
+                        .shadow(color: Color.green.opacity(0.5), radius: 4)
                 }
             }
             
@@ -729,3 +967,16 @@ extension Color {
     }
 }
 
+// Add this extension to ChatListView or create a separate file
+extension String {
+    func getInitials() -> String {
+        let words = self.split(separator: " ")
+        if let firstWord = words.first, let firstChar = firstWord.first {
+            if words.count > 1, let lastWord = words.last, let lastChar = lastWord.first {
+                return "\(firstChar)\(lastChar)".uppercased()
+            }
+            return String(firstChar).uppercased()
+        }
+        return "?"
+    }
+}

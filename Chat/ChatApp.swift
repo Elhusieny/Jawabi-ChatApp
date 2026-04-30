@@ -1,15 +1,79 @@
 
 // App.swift or your main app file
-
 import SwiftUI
-import UserNotifications // ADD THIS IMPORT
+import UserNotifications
+import FirebaseCore
+import FirebaseMessaging  // ADD THIS
+
+class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate, MessagingDelegate {
+    
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        FirebaseApp.configure()
+        print("🔥 Firebase configured")
+        
+        UNUserNotificationCenter.current().delegate = self
+        Messaging.messaging().delegate = self
+        print("📋 Delegates set")
+        
+        return true
+    }
+
+    func application(_ application: UIApplication,
+                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Messaging.messaging().apnsToken = deviceToken
+        let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        print("✅ APNs token received: \(tokenString.prefix(20))...")
+        print("📤 Forwarding APNs token to Firebase...")
+    }
+
+    func application(_ application: UIApplication,
+                     didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        print("❌ FAILED to register for remote notifications: \(error.localizedDescription)")
+    }
+
+    func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        print("📱 FCM delegate called")
+        guard let token = fcmToken else {
+            print("❌ FCM token is nil")
+            return
+        }
+        print("📱 FCM Token: \(token)")
+        UserDefaults.standard.set(token, forKey: "fcmToken")
+        FCMTokenService.shared.sendTokenToBackend(token)
+    }
+    
+
+    // MARK: - UNUserNotificationCenterDelegate
+    // Show notification even when app is in foreground
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound, .badge])
+    }
+    
+    // Handle notification tap
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        let userInfo = response.notification.request.content.userInfo
+        print("📲 Notification tapped: \(userInfo)")
+        completionHandler()
+    }
+}
 
 @main
 struct ChatApp: App {
+    
     @StateObject private var authViewModel = AuthViewModel()
     @StateObject private var chatViewModel = ChatViewModel()
+    // In your root ContentView or App struct
+    @State private var showingAddAccount = false
+    // register app delegate for Firebase setup
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    
     @Environment(\.scenePhase) private var scenePhase
-
+    
     var body: some Scene {
         WindowGroup {
             Group {
@@ -24,75 +88,46 @@ struct ChatApp: App {
             }
             .onAppear {
                 authViewModel.checkAuthenticationStatus()
+                authViewModel.loadSavedAccounts()
                 requestNotificationPermissions() // ADD THIS
                 
-//                // Auto-connect SignalR when app launches with better timing
-//                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-//                    chatViewModel.connectSignalR()
-//                }
+                
             }
-//            .onChange(of: scenePhase) { newPhase in
-//                switch newPhase {
-//                case .active:
-//                    print("📱 App became active - ensuring SignalR connection")
-//                    chatViewModel.ensureSignalRConnection()
-//                case .background:
-//                    print("📱 App went to background")
-//                case .inactive:
-//                    print("📱 App became inactive")
-//                @unknown default:
-//                    break
-//                }
-//            }
+            // Inside .onReceive or .onAppear
+            .onReceive(NotificationCenter.default.publisher(
+                for: NSNotification.Name("AddNewAccount")
+            )) { _ in
+                showingAddAccount = true
+            }
+            .sheet(isPresented: $showingAddAccount) {
+                LoginView()
+                    .environmentObject(authViewModel)
+            }
+            
         }
     }
     
-    // ADD THIS METHOD
     private func requestNotificationPermissions() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            print("🔔 Permission granted: \(granted), error: \(String(describing: error))")
+            
             if granted {
-                print("✅ Notification permissions granted")
-            } else if let error = error {
-                print("❌ Notification permissions error: \(error)")
-            } else {
-                print("❌ Notification permissions denied")
+                DispatchQueue.main.async {
+                    UIApplication.shared.registerForRemoteNotifications()
+                    print("📡 registerForRemoteNotifications called")
+                    
+                    // ✅ Also force-fetch FCM token directly
+                    Messaging.messaging().token { token, error in
+                        if let error = error {
+                            print("❌ FCM token fetch error: \(error.localizedDescription)")
+                        } else if let token = token {
+                            print("📱 FCM Token (manual fetch): \(token)")
+                            UserDefaults.standard.set(token, forKey: "fcmToken")
+                            FCMTokenService.shared.sendTokenToBackend(token)
+                        }
+                    }
+                }
             }
         }
     }
 }
-    // In your App.swift or initial view
-    private func requestNotificationPermissions() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if granted {
-                print("✅ Notification permissions granted")
-            } else {
-                print("❌ Notification permissions denied")
-            }
-        }
-    }
-
-//@main
-//struct ChatApp: App {
-//    @StateObject private var authViewModel = AuthViewModel()
-//    @StateObject private var chatViewModel = ChatViewModel()
-//    
-//    var body: some Scene {
-//        WindowGroup {
-//            ContentView()
-//                .environmentObject(authViewModel)
-//                .environmentObject(chatViewModel)
-//        }
-//    }
-//}
-//
-//struct ContentView: View {
-//    @EnvironmentObject var authViewModel: AuthViewModel
-//    
-//    var body: some View {
-//        if authViewModel.isAuthenticated {
-//            ChatListView()
-//        } else {
-//            LoginView()
-//        }
-//    }
-//}

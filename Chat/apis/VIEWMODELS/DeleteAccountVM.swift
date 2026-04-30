@@ -1,5 +1,4 @@
-//
-//
+
 //import Foundation
 //import Combine
 //
@@ -11,14 +10,12 @@
 //       @Published var errorMessage: String?
 //       @Published var showAlert = false
 //       @Published var alertMessage = ""
-//       
 //       private var cancellables = Set<AnyCancellable>()
 //       private let authService = AuthService.shared
 //    // MARK: - Delete Account
 //    func deleteAccount() {
 //        isLoading = true
 //        errorMessage = nil
-//        
 //        print("🗑️ Starting account deletion process...")
 //        
 //        deleteAccountService.deleteAccount()

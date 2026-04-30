@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import SignalRClient
 
 import Foundation
@@ -25,14 +26,25 @@ protocol SignalRServiceProtocol: ObservableObject {
 }
 
 class SignalRService: SignalRServiceProtocol, ObservableObject {
-     var lastSentChatId: Int?
-    @Published var seenStatus: SeenStatus? // ✅ ADD THIS
-
-    private var connection: HubConnection
+    @Published var lastSentChatId: Int?
+    @Published var seenStatus: SeenStatus?
+    
+    // New publishers for file scan and message history
+    @Published var fileStatusUpdated: FileStatusUpdatedData?
+    @Published var errorMessage: String?
+    @Published var privateMessageHistory: [MessageWithSeenStatus] = []
+    @Published var isFileScanning = false
+    
+    // Blocked messages tracking
+    @Published var blockedMessages: [BlockedMessageInfo] = []
+    
+     var connection: HubConnection
     private var connectionDelegate: ConnectionDelegate?
     private var joinCompletionHandlers: [Int: (Bool) -> Void] = [:]
     private var tokenRefreshTimer: Timer?
     private var typingTimers: [Int: Timer] = [:]
+    private var pendingMessageCallbacks: [Int: (Result<ScannedFileResult?, Error>) -> Void] = [:]
+    private var nextCallbackId = 0
     
     @Published var connectionState: ConnectionState = .disconnected
     @Published var receivedMessage: ReceivedPrivateMessage?
@@ -41,7 +53,7 @@ class SignalRService: SignalRServiceProtocol, ObservableObject {
     @Published var typingUsers: [String] = []
     @Published var deletedMessageId: Int?
     @Published var typingStatus: TypingStatus?
-    @Published var userStatus: UserStatus? // ADD THIS
+    @Published var userStatus: UserStatus?
     
     public enum ConnectionState {
         case connected, disconnected, connecting, reconnecting
@@ -54,6 +66,8 @@ class SignalRService: SignalRServiceProtocol, ObservableObject {
         startTokenRefreshTimer()
     }
     
+    // MARK: - Rest of the SignalRService class remains the same...
+      
     private static func createConnection() -> HubConnection {
         let token = UserDefaults.standard.string(forKey: "authToken") ?? ""
         let baseUrl = "http://158.220.90.131:8444"
@@ -208,10 +222,162 @@ class SignalRService: SignalRServiceProtocol, ObservableObject {
                   )
               }
           }
+            
+            // 2. Handle FILE STATUS UPDATED (for file/image scanning)
+            connection.on(method: "FileStatusUpdated") { [weak self] (fileData: FileStatusUpdatedData) in
+                print("🔍 SignalR: File status updated received")
+                print("   - messageId: \(fileData.messageId)")
+                print("   - fileUrl: \(fileData.fileUrl)")
+                print("   - isSafe: \(fileData.isSafe)")
+                print("   - fileName: \(fileData.fileName ?? "nil")")
+                
+                DispatchQueue.main.async {
+                    self?.isFileScanning = false
+                    self?.fileStatusUpdated = fileData
+                    
+                    if !fileData.isSafe {
+                        print("⚠️ File blocked: \(fileData.fileUrl)")
+                        // The file will be shown as blocked in the UI
+                    }
+                }
+            }
+            
+            // 3. Handle ERROR MESSAGES (as strings)
+            connection.on(method: "ReceiveErrorMessage") { [weak self] (errorMsg: String) in
+                print("❌ SignalR: Error message received: \(errorMsg)")
+                
+                DispatchQueue.main.async {
+                    self?.errorMessage = errorMsg
+                    self?.isFileScanning = false
+                    
+                    // Check if this is a blocked URL/message
+                    if errorMsg.contains("blocked") || errorMsg.contains("flagged") || errorMsg.contains("malicious") {
+                        print("🚫 Message/URL was blocked: \(errorMsg)")
+                        // We'll track blocked messages separately
+                    }
+                    
+                    // Show error alert
+                    self?.showErrorMessageAlert(errorMsg)
+                }
+            }
+            
+            // 4. Handle MESSAGE HISTORY with seen status
+            connection.on(method: "ReceivePrivateMessageHistory") { [weak self] (messages: [MessageWithSeenStatus]) in
+                print("📚 SignalR: Received \(messages.count) historical messages with seen status")
+                
+                DispatchQueue.main.async {
+                    self?.privateMessageHistory = messages
+                    
+                    let receivedMessages = messages.map { msg -> ReceivedPrivateMessage in
+                        return ReceivedPrivateMessage(
+                            From: msg.from,
+                            from: msg.from,
+                            Text: msg.text,
+                            text: msg.text,
+                            TimeStamp: msg.timeStamp,
+                            timeStamp: msg.timeStamp,
+                            ChatId: nil,
+                            chatId: nil,
+                            MessageId: msg.id,
+                            messageId: msg.id,
+                            isFile: msg.isFile,      // ✅ ADD THIS
+                            isSafe: msg.isSafe,      // ✅ ADD THIS
+                            fileUrl: msg.fileUrl     // ✅ ADD THIS
+                        )
+                    }
+                    self?.receivedMessageHistory = receivedMessages
+                }
+            }
+            
+                
         
         print("✅ SignalR handlers setup completed with typing and status support")
     }
     
+    // MARK: - New Methods for File Scan and Message History
+       
+       /// Send a message with file scanning support
+       func sendMessageWithScan(_ message: String, chatId: Int, photoUrl: String? = nil, isFile: Bool = false) -> AnyPublisher<ScannedFileResult?, Error> {
+           guard connectionState == .connected else {
+               return Fail(error: NSError(domain: "SignalR", code: -1, userInfo: [NSLocalizedDescriptionKey: "SignalR not connected"]))
+                   .eraseToAnyPublisher()
+           }
+           
+           guard chatId > 0 else {
+               return Fail(error: NSError(domain: "SignalR", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid chat ID"]))
+                   .eraseToAnyPublisher()
+           }
+           
+           guard !message.isEmpty else {
+               return Fail(error: NSError(domain: "SignalR", code: -3, userInfo: [NSLocalizedDescriptionKey: "Empty message"]))
+                   .eraseToAnyPublisher()
+           }
+           
+           let callbackId = nextCallbackId
+           nextCallbackId += 1
+           
+           return Future<ScannedFileResult?, Error> { [weak self] promise in
+               guard let self = self else {
+                   promise(.failure(NSError(domain: "SignalR", code: -4, userInfo: [NSLocalizedDescriptionKey: "Service deallocated"])))
+                   return
+               }
+               
+               // Store the callback
+               self.pendingMessageCallbacks[callbackId] = { result in
+                   switch result {
+                   case .success(let scanResult):
+                       // Only send the actual message if the file is safe
+                       if scanResult?.isSafe ?? true {
+                           self.sendMessage(message, chatId: chatId, photoUrl: photoUrl)
+                       }
+                       promise(.success(scanResult))
+                   case .failure(let error):
+                       promise(.failure(error))
+                   }
+               }
+               
+               // Set scanning state
+               self.isFileScanning = true
+               
+               // Send the message with file scanning
+               print("🔍 SignalR: Sending message with file scan to chat \(chatId)")
+               self.connection.invoke(method: "SendPrivateMessageWithScan", message, chatId, photoUrl ?? "", isFile) { error in
+                   if let error = error {
+                       DispatchQueue.main.async {
+                           self.isFileScanning = false
+                           self.pendingMessageCallbacks.removeValue(forKey: callbackId)
+                           promise(.failure(error))
+                       }
+                   }
+               }
+           }
+           .timeout(.seconds(30), scheduler: DispatchQueue.main, customError: {
+               return NSError(domain: "SignalR", code: -5, userInfo: [NSLocalizedDescriptionKey: "File scan timeout"])
+           })
+           .eraseToAnyPublisher()
+       }
+       
+       /// Request message history with seen status
+       func getMessagesWithSeenStatus(chatId: Int) {
+           guard connectionState == .connected else {
+               print("❌ Cannot get messages - SignalR not connected")
+               return
+           }
+           
+           print("📨 SignalR: Requesting message history with seen status for chat \(chatId)")
+           
+           connection.invoke(method: "GetMessageHistory", chatId) { [weak self] error in
+               if let error = error {
+                   print("❌ SignalR GetMessageHistory failed: \(error)")
+                   DispatchQueue.main.async {
+                       self?.connectionError = "GetMessageHistory failed: \(error.localizedDescription)"
+                   }
+               } else {
+                   print("✅ SignalR GetMessageHistory request sent")
+               }
+           }
+       }
+       
     func sendTypingIndicator(chatId: Int) {
         guard connectionState == .connected else {
             print("❌ Cannot send typing indicator - SignalR not connected")
@@ -350,55 +516,125 @@ class SignalRService: SignalRServiceProtocol, ObservableObject {
             }
         }
     }
-    
-    func sendMessage(_ message: String, chatId: Int, photoUrl: String? = nil) {
-        guard connectionState == .connected else {
-            print("❌ Cannot send message - SignalR not connected")
-            return
-        }
-        
-        // Validate inputs
-        guard chatId > 0 else {
-            print("❌ Cannot send message - invalid chatId: \(chatId)")
-            DispatchQueue.main.async {
-                self.connectionError = "Invalid chat ID"
-            }
-            return
-        }
-        
-        guard !message.isEmpty else {
-            print("❌ Cannot send message - empty message")
-            return
-        }
-        
-        // Store the chat ID we're sending to
-        lastSentChatId = chatId
-        print("📤 SignalR: Sending private message '\(message)' to chat \(chatId) with photo: \(photoUrl ?? "nil")")
-        
-        // UPDATED: Pass 3 parameters (message, chatId, photoUrl)
-        connection.invoke(method: "SendPrivateMessage", message, chatId, photoUrl) { [weak self] error in
-            if let error = error {
-                print("❌ SignalR SendPrivateMessage failed: \(error)")
-                DispatchQueue.main.async {
-                    self?.connectionError = "Send failed: \(error.localizedDescription)"
-                    
-                    // POST NOTIFICATION to remove optimistic message
-                    NotificationCenter.default.post(
-                        name: Notification.Name("MessageSendFailed"),
-                        object: nil,
-                        userInfo: [
-                            "chatId": chatId,
-                            "message": message,
-                            "error": error.localizedDescription
-                        ]
-                    )
-                }
-            } else {
-                print("✅ SignalR SendPrivateMessage successful")
-            }
-        }
-    }
-    
+//    func getMessages(chatId: Int) {
+//          // Use the new method that includes seen status
+//          getMessagesWithSeenStatus(chatId: chatId)
+//      }
+      
+    private func showErrorMessageAlert(_ message: String) {
+          // Post notification to show alert in ChatDetailView
+          NotificationCenter.default.post(
+              name: NSNotification.Name("SignalRErrorMessage"),
+              object: nil,
+              userInfo: ["message": message]
+          )
+      }
+      
+      // MARK: - Send Methods
+      
+      func sendMessage(_ message: String, chatId: Int, photoUrl: String? = nil) {
+          guard connectionState == .connected else {
+              print("❌ Cannot send message - SignalR not connected")
+              return
+          }
+          
+          guard chatId > 0 else {
+              print("❌ Cannot send message - invalid chatId: \(chatId)")
+              DispatchQueue.main.async {
+                  self.connectionError = "Invalid chat ID"
+              }
+              return
+          }
+          
+          guard !message.isEmpty else {
+              print("❌ Cannot send message - empty message")
+              return
+          }
+          
+          // Store the chat ID we're sending to
+          lastSentChatId = chatId
+          
+          print("📤 SignalR: Sending private message '\(message)' to chat \(chatId)")
+          
+          // For URLs, we should send them normally - the server will check them
+          let isUrl = message.hasPrefix("http://") || message.hasPrefix("https://")
+          let isFile = photoUrl != nil ||
+                      message.lowercased().hasSuffix(".jpg") ||
+                      message.lowercased().hasSuffix(".jpeg") ||
+                      message.lowercased().hasSuffix(".png") ||
+                      message.lowercased().hasSuffix(".gif") ||
+                      message.lowercased().hasSuffix(".webp") ||
+                      message.lowercased().hasSuffix(".pdf") ||
+                      message.lowercased().hasSuffix(".doc") ||
+                      message.lowercased().hasSuffix(".docx") ||
+                      message.lowercased().hasSuffix(".txt") ||
+                      message.lowercased().hasSuffix(".zip")
+          
+          if isFile || isUrl {
+              print("🔍 This message will be scanned by the server")
+              self.isFileScanning = true
+          }
+          
+          // Send the message - server will scan it and send FileStatusUpdated if needed
+          connection.invoke(method: "SendPrivateMessage", message, chatId, photoUrl ?? "") { [weak self] error in
+              DispatchQueue.main.async {
+                  self?.isFileScanning = false
+                  
+                  if let error = error {
+                      print("❌ SignalR SendPrivateMessage failed: \(error)")
+                      self?.connectionError = "Send failed: \(error.localizedDescription)"
+                  } else {
+                      print("✅ SignalR SendPrivateMessage successful")
+                  }
+              }
+          }
+      }
+      
+      func sendImageMessage(_ imageData: Data, fileName: String, chatId: Int) {
+          guard connectionState == .connected else {
+              print("❌ Cannot send image - SignalR not connected")
+              return
+          }
+          
+          guard chatId > 0 else {
+              print("❌ Cannot send image - invalid chatId: \(chatId)")
+              return
+          }
+          
+          // First upload the image, then send the message with the URL
+          // The server will scan it and send FileStatusUpdated
+          print("🖼️ SignalR: Sending image '\(fileName)' to chat \(chatId)")
+          self.isFileScanning = true
+          
+          // Note: You need to upload the image first via HTTP, then send the URL
+          // This should be handled by your ImageUploadService
+      }
+      
+      // MARK: - Helper Methods
+      
+      func addBlockedMessage(_ info: BlockedMessageInfo) {
+          DispatchQueue.main.async { [weak self] in
+              self?.blockedMessages.append(info)
+              // Keep only recent blocked messages
+              if self?.blockedMessages.count ?? 0 > 50 {
+                  self?.blockedMessages.removeFirst()
+              }
+          }
+      }
+      
+      func clearFileStatus() {
+          fileStatusUpdated = nil
+      }
+      
+      func clearErrorMessage() {
+          errorMessage = nil
+      }
+      
+      func clearMessageHistory() {
+          privateMessageHistory.removeAll()
+      }
+      
+      
     func deleteMessage(messageId: Int) {
         guard connectionState == .connected else {
             print("❌ Cannot delete message - SignalR not connected")

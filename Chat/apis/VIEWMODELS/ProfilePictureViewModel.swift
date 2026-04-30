@@ -40,15 +40,15 @@ class ProfilePictureViewModel: ObservableObject {
                 }
             } receiveValue: { [weak self] userProfile in
                 self?.userProfile = userProfile
-                self?.tempName = userProfile.name
+                self?.tempName = userProfile.displayName
                 self?.tempEmail = userProfile.email
                 self?.tempPhoneNumber = userProfile.phoneNumber
-                print("✅ Profile loaded: \(userProfile.name)")
+                print("✅ Profile loaded: \(userProfile.displayName)")
             }
             .store(in: &cancellables)
     }
     
-    // MARK: - Upload Profile Picture
+    // MARK: - Upload Profile Picture (UPDATED)
     func uploadProfilePicture() {
         guard let image = selectedImage else {
             errorMessage = "No image selected"
@@ -60,20 +60,40 @@ class ProfilePictureViewModel: ObservableObject {
         errorMessage = nil
         successMessage = nil
         
+        // Simulate progress updates
+        Timer.publish(every: 0.1, on: .main, in: .common)
+            .autoconnect()
+            .prefix(10)
+            .sink { [weak self] _ in
+                guard let self = self, self.isUploading else { return }
+                self.uploadProgress = min(self.uploadProgress + 0.1, 0.9)
+            }
+            .store(in: &cancellables)
+        
         profilePictureService.uploadProfilePicture(image)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] completion in
                 self?.isUploading = false
+                self?.uploadProgress = 1.0
+                
                 if case .failure(let error) = completion {
                     self?.errorMessage = "Upload failed: \(error.localizedDescription)"
                     print("❌ Upload error: \(error)")
                 }
             } receiveValue: { [weak self] response in
+                // Use the computed isSuccess property
                 if response.isSuccess {
                     self?.successMessage = response.message ?? "Profile picture updated successfully!"
                     
                     // Reload profile to get updated picture
-                    self?.loadUserProfile()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        self?.loadUserProfile()
+                        
+                        // Also reload from JWT token
+                        if let authViewModel = self?.getAuthViewModel() {
+                            authViewModel.reloadProfilePictureFromToken()
+                        }
+                    }
                     
                     // Clear selected image
                     self?.selectedImage = nil
@@ -86,10 +106,17 @@ class ProfilePictureViewModel: ObservableObject {
             .store(in: &cancellables)
     }
     
+    // MARK: - Helper to get AuthViewModel (if needed)
+    private func getAuthViewModel() -> AuthViewModel? {
+        // This is a placeholder - you need to find the right way to access your AuthViewModel
+        // This could be via dependency injection or environment object
+        return nil // Implement based on your app's architecture
+    }
+    
     // MARK: - Update User Profile Info
     func updateProfileInfo() {
-        guard tempName != userProfile?.name || 
-              tempEmail != userProfile?.email || 
+        guard tempName != userProfile?.displayName ||
+              tempEmail != userProfile?.email ||
               tempPhoneNumber != userProfile?.phoneNumber else {
             isEditingProfile = false
             return
@@ -120,7 +147,6 @@ class ProfilePictureViewModel: ObservableObject {
     
     // MARK: - Image Picker Handlers
     func selectImageFromSource(_ source: UIImagePickerController.SourceType) {
-        // This will be handled by the view
         showImagePicker = true
     }
     
@@ -132,7 +158,7 @@ class ProfilePictureViewModel: ObservableObject {
     
     // MARK: - Cancel Edit
     func cancelEdit() {
-        tempName = userProfile?.name ?? ""
+        tempName = userProfile?.displayName ?? ""
         tempEmail = userProfile?.email ?? ""
         tempPhoneNumber = userProfile?.phoneNumber ?? ""
         isEditingProfile = false
@@ -162,7 +188,7 @@ class ProfilePictureViewModel: ObservableObject {
     
     // MARK: - Get User Initials
     func getUserInitials() -> String {
-        return userProfile?.name.getInitials() ?? "?"
+        return userProfile?.displayName.getInitials() ?? "?"
     }
     
     // MARK: - Clear Messages

@@ -1,19 +1,13 @@
-//
-//  ChatSummary.swift
-//  Chat
-//
-//  Created by Ahmed Elhussieny on 04/01/2026.
-//
 import Foundation
-
-
 /// Model matching the API response from GetChatsWithLastMessage
 struct ChatSummary: Codable {
     let id: Int
-    let name: String
-    let pictureUrl: String
+    let name: String?           // ← was String
+    let pictureUrl: String?     // ← was String
     let lastMessage: LastMessageInfo?
-    let type: Int
+    let unreadCount: Int?       // ← add this, you're missing it
+    let isOnline: Bool?         // ← add this too
+    let type: Int?              // ← harden this as well
 }
 
 struct LastMessageInfo: Codable {

@@ -15,6 +15,9 @@ enum NetworkError: Error, LocalizedError {
     case encodingError(Error)
     case unauthorized
     case serverError(String)
+    case authenticationError
+    case invalidImageData
+
     case unknown
     var errorDescription: String? {
         switch self {
@@ -32,6 +35,10 @@ enum NetworkError: Error, LocalizedError {
             return "Unauthorized access"
         case .serverError:
             return "Server error"
+        case .authenticationError:
+            return "Authentication required. Please login again."
+        case .invalidImageData:
+            return "Invalid image data."
         case .unknown:
             return "Unknown error occurred"
         }

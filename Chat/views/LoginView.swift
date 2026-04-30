@@ -6,6 +6,7 @@ struct LoginView: View {
     @State private var password = ""
     @State private var isPasswordVisible = false
     @State private var gradientAnimation = false
+    @State private var showingSavedAccounts = false
 
     // Define the main color as static computed properties - SAME AS ProfileView
     private var primaryColor: Color { Color(hex: "#7373d2") }
@@ -55,18 +56,16 @@ struct LoginView: View {
                 }
                 
                 VStack(spacing: 32) {
-                    // Header
                     VStack(spacing: 16) {
-                        Image(systemName: "message.circle.fill")
-                            .font(.system(size: 80))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: iconGradientColors,
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .symbolRenderingMode(.hierarchical)
+                        // Check what type of image it is
+                            // Custom image asset
+                            Image("JawabiLogo")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 120, height: 120) // Square aspect
+                                .clipShape(RoundedRectangle(cornerRadius: 20))
+                                .shadow(color: primaryColor.opacity(0.3), radius: 10, x: 0, y: 5)
+                        
                         
                         VStack(spacing: 8) {
                             Text("Welcome Back")
@@ -87,47 +86,71 @@ struct LoginView: View {
                         }
                     }
                     .padding(.top, 40)
-                    
-                    // Form
-                    VStack(spacing: 20) {
-                        // Username Field
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Username")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .foregroundColor(.primary)
-                            
-                            HStack {
-                                Image(systemName: "person.fill")
-                                    .foregroundStyle(
-                                        LinearGradient(
-                                            colors: darkPurpleGradient,
-                                            startPoint: .leading,
-                                            endPoint: .trailing
-                                        )
-                                    )
-                                    .frame(width: 20)
-                                
-                                TextField("Enter your username", text: $userName)
-                                    .textFieldStyle(PlainTextFieldStyle())
-                                    .autocapitalization(.none)
-                                    .disableAutocorrection(true)
-                            }
-                            .padding()
-                            .background(Color(.systemBackground))
-                            .cornerRadius(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(
-                                        LinearGradient(
-                                            colors: [.gray.opacity(0.2), .gray.opacity(0.1)],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                        ),
-                                        lineWidth: 1
-                                    )
-                            )
-                        }
+                    // Saved Accounts Section (NEW)
+                                       if !authViewModel.savedAccounts.isEmpty {
+                                           SavedAccountsSection()
+                                               .transition(.opacity)
+                                       }
+                                       
+                                       // Form
+                                       VStack(spacing: 20) {
+                                           // Username Field
+                                           VStack(alignment: .leading, spacing: 8) {
+                                               Text("Username")
+                                                   .font(.subheadline)
+                                                   .fontWeight(.medium)
+                                                   .foregroundColor(.primary)
+                                               
+                                               HStack {
+                                                   Image(systemName: "person.fill")
+                                                       .foregroundStyle(
+                                                           LinearGradient(
+                                                               colors: darkPurpleGradient,
+                                                               startPoint: .leading,
+                                                               endPoint: .trailing
+                                                           )
+                                                       )
+                                                       .frame(width: 20)
+                                                   
+                                                   TextField("Enter your username", text: $userName)
+                                                       .textFieldStyle(PlainTextFieldStyle())
+                                                       .autocapitalization(.none)
+                                                       .disableAutocorrection(true)
+                                                   
+                                                   // Auto-fill button for saved accounts
+                                                   if !authViewModel.savedAccounts.contains(userName) && !userName.isEmpty {
+                                                       Button {
+                                                           if let credentials = authViewModel.autoFillCredentials(for: userName) {
+                                                               self.password = credentials.password
+                                                           }
+                                                       } label: {
+                                                           Image(systemName: "key.fill")
+                                                               .foregroundStyle(
+                                                                   LinearGradient(
+                                                                       colors: darkPurpleGradient,
+                                                                       startPoint: .leading,
+                                                                       endPoint: .trailing
+                                                                   )
+                                                               )
+                                                       }
+                                                   }
+                                               }
+                                               .padding()
+                                               .background(Color(.systemBackground))
+                                               .cornerRadius(12)
+                                               .overlay(
+                                                   RoundedRectangle(cornerRadius: 12)
+                                                       .stroke(
+                                                           LinearGradient(
+                                                               colors: [.gray.opacity(0.2), .gray.opacity(0.1)],
+                                                               startPoint: .top,
+                                                               endPoint: .bottom
+                                                           ),
+                                                           lineWidth: 1
+                                                       )
+                                               )
+                                           }
+                                           
                         
                         // Password Field
                         VStack(alignment: .leading, spacing: 8) {
@@ -273,7 +296,131 @@ struct LoginView: View {
                 }
             }
             .navigationBarHidden(true)
+            .onAppear {
+                           // Load saved accounts when view appears
+                           authViewModel.loadSavedAccounts()
+                           
+                           // Auto-fill last used account if available
+                           if let lastUsername = UserDefaults.standard.string(forKey: "lastUsername") {
+                               userName = lastUsername
+                               if let credentials = authViewModel.autoFillCredentials(for: lastUsername) {
+                                   password = credentials.password
+                               }
+                           }
+                       }
         }
         .accentColor(primaryColor)
+    }
+    
+       // MARK: - Saved Accounts Section
+       @ViewBuilder
+       private func SavedAccountsSection() -> some View {
+           VStack(alignment: .leading, spacing: 12) {
+               HStack {
+                   Image(systemName: "person.crop.circle.badge.clock")
+                       .foregroundStyle(
+                           LinearGradient(
+                               colors: darkPurpleGradient,
+                               startPoint: .leading,
+                               endPoint: .trailing
+                           )
+                       )
+                   
+                   Text("Saved Accounts")
+                       .font(.headline)
+                       .foregroundStyle(
+                           LinearGradient(
+                               colors: darkPurpleGradient,
+                               startPoint: .leading,
+                               endPoint: .trailing
+                           )
+                       )
+                   
+                   Spacer()
+                   
+                   Button {
+                       showingSavedAccounts.toggle()
+                   } label: {
+                       Image(systemName: "chevron.down")
+                           .rotationEffect(.degrees(showingSavedAccounts ? 180 : 0))
+                   }
+                   .foregroundColor(.secondary)
+               }
+               
+               if showingSavedAccounts {
+                   VStack(spacing: 8) {
+                       ForEach(authViewModel.savedAccounts, id: \.self) { username in
+                           SavedAccountRow(username: username)
+                       }
+                   }
+                   .transition(.opacity.combined(with: .move(edge: .top)))
+               }
+           }
+           .padding()
+           .background(
+               RoundedRectangle(cornerRadius: 12)
+                   .fill(Color(.systemBackground))
+                   .shadow(color: .gray.opacity(0.1), radius: 5, x: 0, y: 2)
+           )
+           .padding(.horizontal)
+       }
+       
+       // MARK: - Saved Account Row
+       private func SavedAccountRow(username: String) -> some View {
+           Button {
+               // Auto-fill this account
+               userName = username
+               if let credentials = authViewModel.autoFillCredentials(for: username) {
+                   password = credentials.password
+               }
+           } label: {
+               HStack {
+                   Image(systemName: "person.circle.fill")
+                       .font(.title2)
+                       .foregroundStyle(
+                           LinearGradient(
+                               colors: darkPurpleGradient,
+                               startPoint: .leading,
+                               endPoint: .trailing
+                           )
+                       )
+                   
+                   VStack(alignment: .leading, spacing: 2) {
+                       Text(username)
+                           .font(.subheadline)
+                           .fontWeight(.medium)
+                           .foregroundColor(.primary)
+                       
+                       Text("Tap to auto-fill")
+                           .font(.caption)
+                           .foregroundColor(.secondary)
+                   }
+                   
+                   Spacer()
+                   
+                   // Delete button
+                   Button {
+                       authViewModel.deleteSavedAccount(username)
+                   } label: {
+                       Image(systemName: "trash")
+                           .font(.caption)
+                           .foregroundColor(.red)
+                   }
+                   .buttonStyle(.plain)
+               }
+               .padding(.vertical, 8)
+               .padding(.horizontal, 12)
+               .background(Color.gray.opacity(0.05))
+               .cornerRadius(8)
+           }
+           .buttonStyle(.plain)
+       }
+   }
+
+// MARK: - Preview
+struct LoginView_Previews: PreviewProvider {
+    static var previews: some View {
+        LoginView()
+            .environmentObject(AuthViewModel())
     }
 }

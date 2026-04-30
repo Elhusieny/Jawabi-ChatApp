@@ -1,22 +1,22 @@
-//
-//  DeleteAccountService.swift
-//  Chat
-//
-//  Created by Ahmed Elhussieny on 08/12/2025.
-//
-
-
 import Foundation
 import Combine
 import Alamofire
 
+/// Service responsible for handling user account deletion operations
 class DeleteAccountService {
+    /// Shared singleton instance
     static let shared = DeleteAccountService()
+    
+    /// Base URL for API endpoints
     private let baseURL = Utilities.baseURL
     
+    /// Private initializer for singleton pattern
     private init() {}
     
     // MARK: - Delete Account
+    
+    /// Deletes the currently authenticated user's account
+    /// - Returns: A publisher that emits true if deletion was successful, or an error
     func deleteAccount() -> AnyPublisher<Bool, Error> {
         guard let url = URL(string: "\(baseURL)/api/Chat/DeleteMyAccount") else {
             return Fail(error: NetworkError.invalidURL).eraseToAnyPublisher()
@@ -26,7 +26,7 @@ class DeleteAccountService {
         urlRequest.httpMethod = "DELETE"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        // Add authentication header
+        // Add authentication token
         if let token = UserDefaults.standard.string(forKey: "authToken") {
             urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             print("🔑 Using token for delete account: \(token.prefix(20))...")
@@ -52,7 +52,7 @@ class DeleteAccountService {
                     print("🔐 Authentication failed - invalid token")
                 }
                 
-                // Handle 204 No Content or 200 OK
+                // Handle successful deletion (204 No Content or 200 OK)
                 if httpResponse.statusCode == 200 || httpResponse.statusCode == 204 {
                     print("✅ Account deleted successfully")
                     return true

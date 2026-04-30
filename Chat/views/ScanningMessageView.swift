@@ -1,3 +1,9 @@
+import SwiftUI
+
+/// A view that displays a temporary message while a file is being scanned for viruses/malware
+/// This view provides visual feedback during the file scanning process before the actual file message is displayed
+
+
 // MARK: - Scanning Message View
 struct ScanningMessageView: View {
     let fileName: String
