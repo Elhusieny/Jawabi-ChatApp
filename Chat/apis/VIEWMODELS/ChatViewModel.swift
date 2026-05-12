@@ -26,7 +26,7 @@ class ChatViewModel: ObservableObject {
      let signalRService: any SignalRServiceProtocol
     private var lastSentChatId: Int?
 
-    private var optimisticMessageTracking: [Int: String] = [:] // [tempMessageId: text]
+     var optimisticMessageTracking: [Int: String] = [:] // [tempMessageId: text]
 
     // Message deduplication
     private var processedMessageIds = Set<String>()
@@ -40,6 +40,11 @@ class ChatViewModel: ObservableObject {
     // ✅ ADD THIS: File status updates tracking
        @Published var fileStatusUpdates: [Int: FileStatusUpdatedData] = [:] // messageId -> file data
     
+    
+        private var lastUsersFetchTime: Date?
+        private let usersCacheDuration: TimeInterval = 300 // 5 minutes cache
+        
+      
     // MARK: - Initialization
        
        init(signalRService: any SignalRServiceProtocol = SignalRService()) {
@@ -56,6 +61,109 @@ class ChatViewModel: ObservableObject {
            disconnectSignalR()
            typingDebounceTimer?.invalidate()
        }
+    // MARK: - Persistent User Caching
+       
+       private func saveUsersToCache() {
+           guard !users.isEmpty else { return }
+           
+           do {
+               let encoder = JSONEncoder()
+               let usersData = try encoder.encode(users)
+               UserDefaults.standard.set(usersData, forKey: "cached_users_\(getCurrentUsername())")
+               UserDefaults.standard.set(Date(), forKey: "cached_users_time_\(getCurrentUsername())")
+               print("💾 Saved \(users.count) users to persistent cache")
+           } catch {
+               print("❌ Failed to cache users: \(error)")
+           }
+       }
+       
+       private func loadUsersFromCache() -> Bool {
+           let username = getCurrentUsername()
+           
+           guard let usersData = UserDefaults.standard.data(forKey: "cached_users_\(username)"),
+                 let cachedTime = UserDefaults.standard.object(forKey: "cached_users_time_\(username)") as? Date else {
+               print("📦 No cached users found")
+               return false
+           }
+           
+           // Check if cache is still valid (optional - you might always load cache)
+           let isCacheValid = Date().timeIntervalSince(cachedTime) < usersCacheDuration
+           
+           do {
+               let decoder = JSONDecoder()
+               let cachedUsers = try decoder.decode([GetAllUsersDM].self, from: usersData)
+               self.users = cachedUsers
+               self.lastUsersFetchTime = cachedTime
+               print("📦 Loaded \(cachedUsers.count) users from persistent cache (valid: \(isCacheValid))")
+               return true
+           } catch {
+               print("❌ Failed to load cached users: \(error)")
+               return false
+           }
+       }
+       
+       func loadAllUsers(forceRefresh: Bool = false) {
+           // Try to load from cache first (synchronous, instant)
+           if !forceRefresh && users.isEmpty {
+               let hadCachedUsers = loadUsersFromCache()
+               if hadCachedUsers {
+                   // We have cached data, but still refresh in background
+                   // to keep it updated without blocking UI
+                   DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                       self?.refreshUsersInBackground()
+                   }
+                   return
+               }
+           }
+           
+           // Check if we have fresh in-memory cache
+           if !forceRefresh,
+              !users.isEmpty,
+              let lastFetch = lastUsersFetchTime,
+              Date().timeIntervalSince(lastFetch) < usersCacheDuration {
+               print("📦 Using fresh in-memory users (\(users.count) users)")
+               return
+           }
+           
+           // Need to fetch from server
+           fetchUsersFromServer()
+       }
+       
+       private func refreshUsersInBackground() {
+           // Only refresh if cache is older than 5 minutes
+           if let lastFetch = lastUsersFetchTime,
+              Date().timeIntervalSince(lastFetch) < usersCacheDuration {
+               print("📦 Cache still fresh, skipping background refresh")
+               return
+           }
+           
+           print("🔄 Refreshing users in background...")
+           fetchUsersFromServer()
+       }
+       
+       private func fetchUsersFromServer() {
+           isLoading = true
+           errorMessage = nil
+           
+           print("🌐 Fetching users from server...")
+           
+           getAllUsersService.getAllUsers()
+               .receive(on: DispatchQueue.main)
+               .sink { [weak self] completion in
+                   self?.isLoading = false
+                   if case .failure(let error) = completion {
+                       self?.errorMessage = "Failed to load users: \(error.localizedDescription)"
+                       print("❌ Failed to load users: \(error.localizedDescription)")
+                   }
+               } receiveValue: { [weak self] users in
+                   self?.users = users
+                   self?.lastUsersFetchTime = Date()
+                   self?.saveUsersToCache() // Save to persistent storage
+                   print("✅ Loaded \(users.count) users from server")
+               }
+               .store(in: &cancellables)
+       }
+   
     func fetchAllChatsFromServer() {
         isLoading = true
         errorMessage = nil
@@ -240,7 +348,7 @@ class ChatViewModel: ObservableObject {
                     if chatId > 0 {
                         self?.createTemporaryChatForMessage(chatId: chatId, message: Message(
                             id: Int.random(in: 1000...9999),
-                            text: lastMessage,
+                                        displayText: lastMessage,
                             name: sender,
                             timestamp: ISO8601DateFormatter().string(from: Date()),
                             isRead: false
@@ -401,12 +509,16 @@ class ChatViewModel: ObservableObject {
         }
     }
     
-    private func autoJoinAllChats() {
+     func autoJoinAllChats() {
         guard isSignalRConnected else {
             print("❌ Cannot auto-join chats - SignalR not connected")
             return
         }
-        
+         // In ChatViewModel.swift
+         func refreshChats() {
+             print("🔄 Manually refreshing chats from server...")
+             fetchAllChatsFromServer()
+         }
         print("🔄 Auto-joining \(chats.count) chats...")
         
         for chat in chats {
@@ -615,11 +727,20 @@ class ChatViewModel: ObservableObject {
         
         return error
     }
-    
     private func sendMessageImmediately(_ text: String, chatId: Int) {
         let tempMessageId = addOptimisticMessage(text, chatId: chatId)
         moveChatToTop(chatId: chatId)
-        signalRService.sendMessage(text, chatId: chatId, photoUrl: nil)
+        
+        // Send as text message with type .text and fileSize 0
+        signalRService.sendMessage(
+            text,
+            chatId: chatId,
+            fileUrl: nil,
+            fileName: nil,
+            fileSize: 0,  // Send 0 for text messages as backend expects
+            fileExtension: nil,
+            type: .text
+        )
     }
     
     // Update addOptimisticMessage method
@@ -627,7 +748,7 @@ class ChatViewModel: ObservableObject {
         let tempMessageId = -Int.random(in: 1000000...9999999)
         let optimisticMessage = Message(
             id: tempMessageId,
-            text: text,
+                        displayText: text,
             name: getCurrentUsername(),
             timestamp: ISO8601DateFormatter().string(from: Date()),
             isRead: true
@@ -722,7 +843,7 @@ class ChatViewModel: ObservableObject {
                 // Find the MOST RECENT optimistic message with matching text
                 let optimisticMessages = messages.filter { $0.id < 0 }
                 for optimisticMsg in optimisticMessages.reversed() {
-                    if optimisticMsg.text == receivedText && isCurrentUser(message: optimisticMsg) {
+                    if optimisticMsg.displayText == receivedText && isCurrentUser(message: optimisticMsg) {
                         print("✅ Found optimistic message in current chat: \(optimisticMsg.id)")
                         tempMessageIdToRemove = optimisticMsg.id
                         break
@@ -768,7 +889,7 @@ class ChatViewModel: ObservableObject {
             } else {
                 // Otherwise, remove any optimistic messages with matching text
                 messages.removeAll { msg in
-                    msg.id < 0 && msg.text == receivedText && isCurrentUser(message: msg)
+                    msg.id < 0 && msg.displayText == receivedText && isCurrentUser(message: msg)
                 }
             }
             
@@ -799,7 +920,7 @@ class ChatViewModel: ObservableObject {
         print("✅ Replacement complete for message ID \(receivedMessageId)")
     }
     
-    // ✅ FIXED: Process incoming messages and immediately replace optimistic ones
+    // ✅ FIXED: Process incoming messages and wait for FileStatusUpdated
     private func processIncomingRealTimeMessage(_ receivedMessage: ReceivedPrivateMessage) {
         let messageId = generateMessageId(receivedMessage)
         if processedMessageIds.contains(messageId) {
@@ -814,68 +935,24 @@ class ChatViewModel: ObservableObject {
             processedMessageIds = Set(processedMessageIds.dropFirst(toRemove))
         }
         
-        // ✅ BLOCK UNSAFE FILES - DO THIS FIRST AND RETURN IMMEDIATELY
-        if receivedMessage.isFile == true && receivedMessage.isSafe == false {
-            print("🚫 BLOCKED FILE DETECTED: \(receivedMessage.fileUrl ?? "unknown")")
+        // ✅ Handle file scanning - DON'T block on initial isSafe: false
+        // The server sends isSafe: false as a pending state, then FileStatusUpdated has the real result
+        if receivedMessage.isFile == true {
+            let ext = (receivedMessage.extension ?? "").lowercased()
+            let audioExtensions = ["m4a", "mp3", "wav", "aac", "ogg", "caf", "aiff"]
+            let isVoice = audioExtensions.contains(ext)
             
-            let chatId = receivedMessage.chatId ?? (signalRService as? SignalRService)?.lastSentChatId ?? 0
-            
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                
-                let fileName = receivedMessage.fileUrl ?? "Unknown file"
-                
-                // Remove ALL temporary messages for this file
-                for (chatIndex, chat) in self.chats.enumerated() where chat.id == chatId {
-                    var updatedChat = chat
-                    var messages = updatedChat.messages
-                    
-                    let originalCount = messages.count
-                    messages.removeAll { msg in
-                        msg.id < 0 && (
-                            msg.text.contains(fileName) ||
-                            msg.text.hasPrefix("SCANNING:") ||
-                            msg.text.hasPrefix("UPLOADING:") ||
-                            (msg.text.contains("🔍 Scanning") && msg.text.contains(fileName))
-                        )
-                    }
-                    
-                    if messages.count < originalCount {
-                        updatedChat = Chat(
-                            id: updatedChat.id,
-                            name: updatedChat.name,
-                            pictureUrl: updatedChat.pictureUrl,
-                            type: updatedChat.type,
-                            messages: messages,
-                            users: updatedChat.users,
-                            unreadCount: updatedChat.unreadCount,
-                            isOnline: updatedChat.isOnline
-                        )
-                        self.chats[chatIndex] = updatedChat
-                        
-                        if self.currentChat?.id == chatId {
-                            self.currentChat = updatedChat
-                        }
-                        
-                        self.saveChats()
-                        self.notifyChatsUpdated()
-                        print("🗑️ Removed scanning message for blocked file: \(fileName)")
-                    }
-                }
-                
-                // Clear from tracking
-                self.optimisticMessageTracking = self.optimisticMessageTracking.filter {
-                    !$0.value.contains(fileName)
-                }
-                
-                // Show alert
-                self.showBlockedFileAlertWithFileName(fileName, chatId: chatId)
+            if isVoice {
+                print("🎙️ Voice message - processing normally (no scan needed)")
+                // Continue to normal processing for voice messages
+            } else if receivedMessage.isSafe == false {
+                // File is being scanned - DON'T block, wait for FileStatusUpdated
+                print("⏳ File isSafe=false on echo (pending scan) - waiting for FileStatusUpdated to confirm")
+                // Continue to normal processing - DO NOT RETURN HERE
+            } else {
+                print("📁 File is safe from echo - processing normally")
             }
-            
-            // CRITICAL: Return here to prevent ANY further processing
-            // Also remove from processedMessageIds so it doesn't block future messages
-            processedMessageIds.remove(messageId)
-            return
+            // IMPORTANT: Continue processing - do NOT return early
         }
         
         // Continue with normal processing for safe files
@@ -1046,7 +1123,7 @@ class ChatViewModel: ObservableObject {
         // Check for duplicates
         let isDuplicate = updatedChat.messages.contains { existingMessage in
             existingMessage.id == message.id ||
-            (existingMessage.text == message.text &&
+            (existingMessage.displayText == message.displayText &&
              existingMessage.name == message.name &&
              abs(existingMessage.date.timeIntervalSince(message.date)) < 5)
         }
@@ -1158,6 +1235,7 @@ class ChatViewModel: ObservableObject {
                 self?.isLoading = false
                 if case .failure(let error) = completion {
                     self?.errorMessage = "Failed to load users: \(error.localizedDescription)"
+                    print("failed to load users error: \(error.localizedDescription)Z")
                 }
             } receiveValue: { [weak self] users in
                 self?.users = users
@@ -1174,7 +1252,9 @@ class ChatViewModel: ObservableObject {
             .sink { [weak self] completion in
                 self?.isLoading = false
                 if case .failure(let error) = completion {
-                    self?.errorMessage = "Failed to load chat: \(error.localizedDescription)"
+//                    self?.errorMessage = "Failed to load chat: \(error.localizedDescription)"
+                    print("failed to load users error: \(error.localizedDescription)Z")
+
                 }
             } receiveValue: { [weak self] chat in
                 self?.currentChat = chat
@@ -1282,17 +1362,16 @@ class ChatViewModel: ObservableObject {
     func sendImageMessage(_ image: UIImage, chatId: Int) {
         isLoading = true
         
-        // Create a temporary message with a unique ID
         let tempMessageId = -Int.random(in: 1000000...9999999)
         let tempMessage = Message(
             id: tempMessageId,
-            text: "Uploading image...",
+                        displayText: "📤 Uploading image...",
             name: getCurrentUsername(),
             timestamp: ISO8601DateFormatter().string(from: Date()),
             isRead: false
         )
         
-        // Add temporary message to chat
+        // Add temporary message
         if let index = chats.firstIndex(where: { $0.id == chatId }) {
             var updatedChat = chats[index]
             var updatedMessages = updatedChat.messages
@@ -1319,7 +1398,7 @@ class ChatViewModel: ObservableObject {
                 case .success(let response):
                     print("✅ Image uploaded: \(response.url)")
                     
-                    // Remove the temporary message
+                    // Remove temporary message
                     if let index = self?.chats.firstIndex(where: { $0.id == chatId }) {
                         var updatedChat = self?.chats[index] ?? self?.chats[index]
                         var messages = updatedChat?.messages ?? []
@@ -1339,14 +1418,28 @@ class ChatViewModel: ObservableObject {
                         self?.saveChats()
                     }
                     
-                    // Send the actual image URL
-                    self?.signalRService.sendMessage(response.url, chatId: chatId, photoUrl: response.url)
+                    // Extract file info
+                    let fileName = (response.url as NSString).lastPathComponent
+                    let fileExtension = (fileName as NSString).pathExtension.lowercased()
+                    let imageData = image.jpegData(compressionQuality: 0.8)
+                    let fileSize = Int64(imageData?.count ?? 0)
+                    
+                    // Send with proper parameters
+                    self?.signalRService.sendMessage(
+                        response.url,
+                        chatId: chatId,
+                        fileUrl: response.url,
+                        fileName: fileName,
+                        fileSize: fileSize,
+                        fileExtension: fileExtension,
+                        type: .image
+                    )
                     
                 case .failure(let error):
                     print("❌ Image upload failed: \(error)")
                     self?.errorMessage = "Failed to upload image: \(error.localizedDescription)"
                     
-                    // Update the temporary message to show error
+                    // Update temporary message to show error
                     if let index = self?.chats.firstIndex(where: { $0.id == chatId }) {
                         var updatedChat = self?.chats[index] ?? self?.chats[index]
                         var messages = updatedChat?.messages ?? []
@@ -1354,7 +1447,7 @@ class ChatViewModel: ObservableObject {
                         if let tempIndex = messages.firstIndex(where: { $0.id == tempMessageId }) {
                             messages[tempIndex] = Message(
                                 id: tempMessageId,
-                                text: "❌ Failed to upload image",
+                                            displayText: "❌ Failed to upload image",
                                 name: self?.getCurrentUsername() ?? "You",
                                 timestamp: ISO8601DateFormatter().string(from: Date()),
                                 isRead: false
@@ -1427,15 +1520,15 @@ class ChatViewModel: ObservableObject {
             .store(in: &cancellables)
     }
     
-    // MARK: - Private Helpers
-    
-    private func moveChatToTop(chatId: Int) {
-        if let index = chats.firstIndex(where: { $0.id == chatId }) {
-            let chat = chats.remove(at: index)
-            chats.insert(chat, at: 0)
-            saveChats()
-        }
-    }
+//    // MARK: - Private Helpers
+//    
+//    private func moveChatToTop(chatId: Int) {
+//        if let index = chats.firstIndex(where: { $0.id == chatId }) {
+//            let chat = chats.remove(at: index)
+//            chats.insert(chat, at: 0)
+//            saveChats()
+//        }
+//    }
     
     private func loadChatAndAddMessage(chatId: Int, message: Message, senderName: String) {
         networkService.getChat(chatId)
@@ -1565,7 +1658,7 @@ class ChatViewModel: ObservableObject {
                             
                             updatedMessages[index] = Message(
                                 id: message.id,
-                                text: message.text,
+                                            displayText: message.displayText,
                                 name: message.name,
                                 timestamp: message.timestamp,
                                 isRead: true,
@@ -1694,7 +1787,7 @@ class ChatViewModel: ObservableObject {
                         
                         updatedMessages[i] = Message(
                             id: message.id,
-                            text: message.text,
+                                        displayText: message.displayText,
                             name: message.name,
                             timestamp: message.timestamp,
                             isRead: true,
@@ -1754,7 +1847,7 @@ class ChatViewModel: ObservableObject {
         let tempMessageId = -Int.random(in: 1000000...9999999)
         let scanningMessage = Message(
             id: tempMessageId,
-            text: "🔍 Scanning link...",
+                        displayText: "🔍 Scanning link...",
             name: getCurrentUsername(),
             timestamp: ISO8601DateFormatter().string(from: Date()),
             isRead: false
@@ -1877,7 +1970,7 @@ class ChatViewModel: ObservableObject {
             if let msgIndex = messages.firstIndex(where: { $0.id == tempMessageId }) {
                 messages[msgIndex] = Message(
                     id: tempMessageId,
-                    text: "❌ Failed to scan link: \(error.localizedDescription)",
+                                displayText: "❌ Failed to scan link: \(error.localizedDescription)",
                     name: getCurrentUsername(),
                     timestamp: ISO8601DateFormatter().string(from: Date()),
                     isRead: false
@@ -1908,7 +2001,7 @@ class ChatViewModel: ObservableObject {
             if let msgIndex = messages.firstIndex(where: { $0.id == tempMessageId }) {
                 messages[msgIndex] = Message(
                     id: tempMessageId,
-                    text: "🚫 BLOCKED LINK: \(url)",
+                                displayText: "🚫 BLOCKED LINK: \(url)",
                     name: getCurrentUsername(),
                     timestamp: ISO8601DateFormatter().string(from: Date()),
                     isRead: false
@@ -1958,107 +2051,92 @@ extension ChatViewModel {
         print("📁 File safe: \(fileData.isSafe)")
         print("📁 File name: \(fileData.fileName ?? "unknown")")
         
-        // Find the scanning message in our chats and replace it
-        for (chatIndex, chat) in chats.enumerated() {
-            // Look for scanning messages
-            let scanningMessages = chat.messages.filter {
-                $0.text.contains("🔍 Scanning") || $0.text.contains("📤 Uploading")
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            var found = false
+            
+            for (chatIndex, chat) in self.chats.enumerated() {
+                var messages = chat.messages
+                
+                // Find by messageId OR by scanning/uploading placeholder
+             
+                let targetIndex = messages.firstIndex { msg in
+                    msg.id == fileData.messageId          // ← this now works because we set id = realMessageId
+                    || (msg.id < 0 && (
+                        msg.displayText.hasPrefix("SCANNING:") ||
+                        msg.displayText.hasPrefix("UPLOADING:")
+                    ))
+                }
+                
+                guard let idx = targetIndex else { continue }
+                found = true
+                
+                if !fileData.isSafe {
+                    // BLOCKED - remove the message
+                    print("🚫 FILE IS BLOCKED - removing from chat \(chat.id)")
+                    messages.remove(at: idx)
+                    
+                    // Show alert to user
+                    self.showBlockedFileAlertWithFileName(fileData.fileName ?? "File", chatId: chat.id)
+                } else {
+                    // SAFE - replace placeholder with real message
+                    print("✅ FILE IS SAFE - showing in chat \(chat.id)")
+                    let existingMsg = messages[idx]
+                    
+                    // Determine correct type based on file extension
+                    let fileExtension = (fileData.fileName as NSString?)?.pathExtension.lowercased() ?? ""
+                    let imageExtensions = ["jpg", "jpeg", "png", "gif", "webp", "bmp"]
+                    let messageType: MessageType = imageExtensions.contains(fileExtension) ? .image : .file
+                    
+                    messages[idx] = Message(
+                        id: fileData.messageId,
+                        displayText: fullFileUrl,
+                        name: existingMsg.name,
+                        timestamp: ISO8601DateFormatter().string(from: Date()),
+                        fileUrl: fullFileUrl,
+                        type: messageType,
+                        isFile: true,
+                        fileName: fileData.fileName,
+                        fileSize: nil,
+                        fileExtension: fileExtension,
+                        isSafe: true,
+                        isRead: false
+                    )
+                }
+                
+                let updatedChat = Chat(
+                    id: chat.id,
+                    name: chat.name,
+                    pictureUrl: chat.pictureUrl,
+                    type: chat.type,
+                    messages: messages,
+                    users: chat.users,
+                    unreadCount: chat.unreadCount,
+                    isOnline: chat.isOnline
+                )
+                
+                self.chats[chatIndex] = updatedChat
+                
+                if self.currentChat?.id == chat.id {
+                    self.currentChat = updatedChat
+                }
+                
+                self.saveChats()
+                self.notifyChatsUpdated()
+                break // Found the chat, stop searching
             }
             
-            for scanningMsg in scanningMessages {
-                print("🔄 Found scanning message: \(scanningMsg.id)")
-                
-                // Extract filename from scanning message
-                let scanningText = scanningMsg.text
-                let scanningFileName = scanningText.replacingOccurrences(of: "🔍 Scanning ", with: "")
-                    .replacingOccurrences(of: "📤 Uploading ", with: "")
-                    .replacingOccurrences(of: "...", with: "")
-                    .trimmingCharacters(in: .whitespaces)
-                
-                // Check if this scanning message matches the file that just finished scanning
-                if fileData.fileName?.contains(scanningFileName) ?? false ||
-                    scanningFileName.contains(fileData.fileName ?? "") {
-                    
-                    print("✅ Found matching scanning message for file: \(scanningFileName)")
-                    
-                    var updatedMessages = chat.messages
-                    
-                    // Remove the scanning message
-                    updatedMessages.removeAll { $0.id == scanningMsg.id }
-                    
-                    // Add the actual file message
-                    let realMessage = Message(
-                        id: fileData.messageId,
-                        text: fullFileUrl,
-                        name: scanningMsg.name,
-                        timestamp: scanningMsg.timestamp,
-                        isRead: scanningMsg.isRead
-                    )
-                    
-                    updatedMessages.append(realMessage)
-                    
-                    let updatedChat = Chat(
-                        id: chat.id,
-                        name: chat.name,
-                        pictureUrl: chat.pictureUrl,
-                        type: chat.type,
-                        messages: updatedMessages,
-                        users: chat.users,
-                        unreadCount: chat.unreadCount,
-                        isOnline: chat.isOnline
-                    )
-                    
-                    chats[chatIndex] = updatedChat
-                    
-                    // Update current chat if needed
-                    if currentChat?.id == chat.id {
-                        currentChat = updatedChat
-                    }
-                    // ✅ BLOCK UNSAFE FILES
-                    if !fileData.isSafe {
-                        print("🚫 BLOCKED FILE: \(fileData.fileName ?? "unknown") - removing from chat")
-                        
-                        // Find and remove the message from all chats
-                        for (chatIndex, chat) in chats.enumerated() {
-                            var messages = chat.messages
-                            let originalCount = messages.count
-                            messages.removeAll { $0.id == fileData.messageId }
-                            
-                            if messages.count < originalCount {
-                                let updatedChat = Chat(
-                                    id: chat.id,
-                                    name: chat.name,
-                                    pictureUrl: chat.pictureUrl,
-                                    type: chat.type,
-                                    messages: messages,
-                                    users: chat.users,
-                                    unreadCount: chat.unreadCount,
-                                    isOnline: chat.isOnline
-                                )
-                                chats[chatIndex] = updatedChat
-                                
-                                if currentChat?.id == chat.id {
-                                    currentChat = updatedChat
-                                }
-                                
-                                saveChats()
-                                notifyChatsUpdated()
-                                
-                                // Show alert
-                                showBlockedFileAlertWithFileName(fileData.fileName ?? "File", chatId: chat.id)
-                                return
-                            }
-                        }
-                        return
-                    }
-                }
+            if !found && fileData.isSafe {
+                print("⚠️ No scanning placeholder found for safe file - refreshing chat")
+                self.notifyChatsUpdated()
+            } else if !found && !fileData.isSafe {
+                print("⚠️ No message found for blocked file - nothing to remove")
             }
         }
-        
-        print("⚠️ Could not find scanning message for file: \(fileData.fileName ?? "unknown")")
     }
     
-    // MARK: - Handle Blocked Messages
+    // MARK : - Handle Blocked Messages
    
     
    
@@ -2184,7 +2262,7 @@ extension ChatViewModel {
         let messageObjects = messages.map { msg -> Message in
             return Message(
                 id: msg.id,
-                text: msg.text,
+                            displayText: msg.displayText,
                 name: msg.from,
                 timestamp: msg.timeStamp,
                 isRead: msg.isRead,
@@ -2400,7 +2478,7 @@ extension ChatViewModel {
                 var updatedMessages = currentChat.messages
                 updatedMessages[index] = Message(
                     id: tempMessageId,
-                    text: newText,
+                                displayText: newText,
                     name: getCurrentUsername(),
                     timestamp: ISO8601DateFormatter().string(from: Date()),
                     isRead: true
@@ -2426,7 +2504,7 @@ extension ChatViewModel {
                 var updatedMessages = updatedChat.messages
                 updatedMessages[msgIndex] = Message(
                     id: tempMessageId,
-                    text: newText,
+                                displayText: newText,
                     name: getCurrentUsername(),
                     timestamp: ISO8601DateFormatter().string(from: Date()),
                     isRead: true
@@ -2532,11 +2610,11 @@ extension ChatViewModel {
         }
         .eraseToAnyPublisher()
     }
-    // Update the sort helper methods
-    private func sortMessagesByDate(_ messages: [Message]) -> [Message] {
-        // Change to ASCENDING order (oldest first, newest last)
-        return messages.sorted { $0.date < $1.date }
-    }
+//    // Update the sort helper methods
+//    private func sortMessagesByDate(_ messages: [Message]) -> [Message] {
+//        // Change to ASCENDING order (oldest first, newest last)
+//        return messages.sorted { $0.date < $1.date }
+//    }
     
     private func sortMessagesByDateDescending(_ messages: [Message]) -> [Message] {
         // Keep this for when you need descending order elsewhere
@@ -2588,7 +2666,7 @@ extension ChatViewModel {
         let tempMessageId = -Int.random(in: 1000000...9999999)
         let scanningMessage = Message(
             id: tempMessageId,
-            text: "🔍 Scanning link...",
+                        displayText: "🔍 Scanning link...",
             name: getCurrentUsername(),
             timestamp: ISO8601DateFormatter().string(from: Date()),
             isRead: false
@@ -2646,7 +2724,7 @@ extension ChatViewModel {
                 if let msgIndex = messages.firstIndex(where: { $0.id == tempMessageId }) {
                     messages[msgIndex] = Message(
                         id: tempMessageId,
-                        text: "❌ Failed to scan link: \(error.localizedDescription)\n\(url)",
+                                    displayText: "❌ Failed to scan link: \(error.localizedDescription)\n\(url)",
                         name: self.getCurrentUsername(),
                         timestamp: ISO8601DateFormatter().string(from: Date()),
                         isRead: false
@@ -2699,4 +2777,115 @@ extension Message {
         return !(seenBy?.isEmpty ?? true)
     }
 }
+extension ChatViewModel {
 
+    // MARK: - Voice Message (NO scanning)
+
+    /// Call this instead of sendMessage() when the file is a voice recording.
+    /// Voice messages are always type .voice (rawValue 2) and are never scanned.
+    func sendVoiceMessage(fileUrl: String, fileName: String, fileSize: Int64, chatId: Int) {
+        guard !fileUrl.isEmpty else {
+            errorMessage = "Voice message URL is missing."
+            return
+        }
+
+        guard isSignalRConnected else {
+            errorMessage = "Not connected to chat server. Please check your connection."
+            return
+        }
+
+        print("🎙️ Sending voice message — scanning SKIPPED (type = .voice)")
+
+        let ext = (fileName as NSString).pathExtension.lowercased()
+
+        let send = { [weak self] in
+            guard let self = self else { return }
+
+            // Optimistic message shows a mic icon while the server confirms delivery
+            let _ = self.addOptimisticVoiceMessage(fileName: fileName, chatId: chatId)
+
+            self.signalRService.sendMessage(
+                fileUrl,               // message text = the file URL
+                chatId: chatId,
+                fileUrl: fileUrl,
+                fileName: fileName,
+                fileSize: fileSize,
+                fileExtension: ext,
+                type: .voice           // rawValue 2 — server will NOT scan this
+            )
+
+            self.moveChatToTop(chatId: chatId)
+        }
+
+        if joinedChats.contains(chatId) {
+            send()
+        } else {
+            joinChatRoom(chatId: chatId) { [weak self] success in
+                if success {
+                    send()
+                } else {
+                    self?.errorMessage = "Failed to join chat. Please try again."
+                }
+            }
+        }
+    }
+
+    // MARK: - Optimistic Voice Bubble
+
+    /// Adds a temporary voice-note bubble ("🎙️ Voice message") while we wait
+    /// for the server echo. The real message from SignalR will replace it.
+    @discardableResult
+    private func addOptimisticVoiceMessage(fileName: String, chatId: Int) -> Int {
+        let tempId = -Int.random(in: 1_000_000...9_999_999)
+        let placeholder = Message(
+            id: tempId,
+                        displayText: "🎙️ Voice message",
+            name: getCurrentUsername(),
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            isRead: true
+        )
+
+        optimisticMessageTracking[tempId] = "🎙️ Voice message"
+
+        if var chat = currentChat, chat.id == chatId {
+            var msgs = chat.messages
+            msgs.append(placeholder)
+            msgs = sortMessagesByDate(msgs)
+            self.currentChat = Chat(
+                id: chat.id, name: chat.name, pictureUrl: chat.pictureUrl,
+                type: chat.type, messages: msgs, users: chat.users,
+                unreadCount: 0, isOnline: chat.isOnline
+            )
+        }
+
+        if let idx = chats.firstIndex(where: { $0.id == chatId }) {
+            var chat = chats[idx]
+            var msgs = chat.messages
+            msgs.append(placeholder)
+            msgs = sortMessagesByDate(msgs)
+            chats[idx] = Chat(
+                id: chat.id, name: chat.name, pictureUrl: chat.pictureUrl,
+                type: chat.type, messages: msgs, users: chat.users,
+                unreadCount: 0, isOnline: chat.isOnline
+            )
+            saveChats()
+        }
+
+        return tempId
+    }
+
+    // MARK: - Helper (mirrors private method in main class)
+
+    private func sortMessagesByDate(_ messages: [Message]) -> [Message] {
+        messages.sorted { $0.date < $1.date }
+    }
+
+    private func moveChatToTop(chatId: Int) {
+        if let index = chats.firstIndex(where: { $0.id == chatId }) {
+            let chat = chats.remove(at: index)
+            chats.insert(chat, at: 0)
+            saveChats()
+        }
+    }
+    
+}

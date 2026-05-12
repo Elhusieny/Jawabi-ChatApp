@@ -216,12 +216,6 @@ class AuthViewModel: ObservableObject {
             print("🔐 No valid token found, user needs to login")
         }
     }
-    
-    /// Handles successful login response by saving user data
-    /// - Parameters:
-    ///   - response: The login response from the server
-    ///   - userName: The username used for login
-    ///   - password: The password used for login
     private func handleSuccessfulLogin(response: LoginResponse, userName: String, password: String) {
         self.isAuthenticated = true
         
@@ -245,6 +239,15 @@ class AuthViewModel: ObservableObject {
             print("💾 Credentials saved (fallback) for: \(userName)")
         }
         
+        // ✅ STORE USER ID - CRITICAL FOR GROUP ADMIN FEATURES
+        if let userId = response.userId {
+            UserDefaults.standard.set(userId, forKey: "currentUserId")
+            UserDefaults.standard.set(userId, forKey: "userId")
+            print("💾 User ID saved: \(userId)")
+        } else {
+            print("⚠️ No user ID received in login response")
+        }
+        
         // Store other user info
         if let displayName = response.displayName {
             UserDefaults.standard.set(displayName, forKey: "userDisplayName")
@@ -263,13 +266,10 @@ class AuthViewModel: ObservableObject {
             
             // Load user info after login
             self.loadUserInfo()
-            // ✅ ADD THIS — send any pending FCM token now that we're authenticated
-                   FCMTokenService.shared.sendPendingTokenIfNeeded()
-                   //print(" ffff \(FCMTokenService.shared.sendPendingTokenIfNeeded()")
-                   NotificationCenter.default.post(
-                       name: NSNotification.Name("UserDidLogin"),
-                       object: nil
-                   )
+            
+            // Send any pending FCM token now that we're authenticated
+            FCMTokenService.shared.sendPendingTokenIfNeeded()
+            
             // Notify that authentication changed (for SignalR to reconnect)
             NotificationCenter.default.post(
                 name: NSNotification.Name("UserDidLogin"),

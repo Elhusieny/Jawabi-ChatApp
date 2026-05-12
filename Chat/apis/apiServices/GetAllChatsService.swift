@@ -99,10 +99,12 @@ class GetAllChatsService: AuthHeaderAdding {
                 
                 print("📡 Get All Chats Response: \(httpResponse.statusCode)")
                 
+                
                 if let responseString = String(data: data, encoding: .utf8) {
                     print("📦 Chats Data: \(responseString.prefix(500))...")
+                    print("all chats \(responseString)")
+
                 }
-                
                 guard httpResponse.statusCode == 200 else {
                     throw NetworkError.serverError("Failed to fetch chats: \(httpResponse.statusCode)")
                 }
@@ -117,7 +119,7 @@ class GetAllChatsService: AuthHeaderAdding {
                         if let lastMsg = summary.lastMessage {
                             messages.append(Message(
                                 id: 0,
-                                text: lastMsg.text,
+                                            displayText: lastMsg.text,
                                 name: summary.name ?? "Unknown",
                                 timestamp: lastMsg.time
                             ))

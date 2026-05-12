@@ -1,93 +1,123 @@
-//
-//  VoiceRecorderService.swift
-//  Chat
-//
-//  Created by Ahmed Elhussieny on 21/04/2026.
-//
-
-
 import AVFoundation
-import Combine
+import Foundation
 
-class VoiceRecorderService: NSObject, ObservableObject {
+class VoiceRecorderService: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published var isRecording = false
+    @Published var isPaused = false
     @Published var recordingDuration: TimeInterval = 0
-    @Published var audioLevels: [Float] = Array(repeating: 0, count: 30)
-
+    @Published var recordingURL: URL?
+    
     private var audioRecorder: AVAudioRecorder?
-    private var timer: Timer?
-    private var levelTimer: Timer?
-    private var recordingURL: URL?
-
-    func startRecording() throws -> URL {
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .default, options: .defaultToSpeaker)
-        try session.setActive(true)
-
-        let fileName = "voice_\(Int(Date().timeIntervalSince1970)).m4a"
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-        recordingURL = url
-
+    private var recordingTimer: Timer?
+    private var recordingStartTime: Date?
+    
+    private let audioFilename = "voice_note_\(Date().timeIntervalSince1970).m4a"
+    
+    override init() {
+        super.init()
+        setupAudioSession()
+    }
+    
+    private func setupAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("Failed to set up audio session: \(error)")
+        }
+    }
+    
+    func requestPermission(completion: @escaping (Bool) -> Void) {
+        AVAudioSession.sharedInstance().requestRecordPermission { granted in
+            DispatchQueue.main.async {
+                completion(granted)
+            }
+        }
+    }
+    
+    func startRecording() throws {
+        // Reset state
+        recordingDuration = 0
+        isPaused = false
+        recordingStartTime = Date()
+        
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let audioURL = documentsPath.appendingPathComponent(audioFilename)
+        recordingURL = audioURL
+        
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
             AVSampleRateKey: 44100,
             AVNumberOfChannelsKey: 1,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
         ]
-
-        audioRecorder = try AVAudioRecorder(url: url, settings: settings)
-        audioRecorder?.isMeteringEnabled = true
+        
+        audioRecorder = try AVAudioRecorder(url: audioURL, settings: settings)
+        audioRecorder?.delegate = self
+        audioRecorder?.prepareToRecord()
         audioRecorder?.record()
-
+        
         isRecording = true
-        recordingDuration = 0
-
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            self.recordingDuration += 1
-        }
-        levelTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { _ in
-            self.audioRecorder?.updateMeters()
-            let level = self.audioRecorder?.averagePower(forChannel: 0) ?? -60
-            let normalized = max(0, (level + 60) / 60)
-            self.audioLevels.removeFirst()
-            self.audioLevels.append(normalized)
-        }
-
-        return url
-    }
-    func requestPermission(completion: @escaping (Bool) -> Void) {
-        switch AVAudioSession.sharedInstance().recordPermission {
-        case .granted:
-            completion(true)
-        case .denied:
-            completion(false)
-        case .undetermined:
-            AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                DispatchQueue.main.async {
-                    completion(granted)
-                }
-            }
-        @unknown default:
-            completion(false)
+        
+        // Start timer
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            self?.updateDuration()
         }
     }
+    
+    func pauseRecording() {
+        audioRecorder?.pause()
+        isPaused = true
+        recordingTimer?.invalidate()
+    }
+    
+    func resumeRecording() {
+        audioRecorder?.record()
+        isPaused = false
+        recordingStartTime = Date().addingTimeInterval(-recordingDuration)
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            self?.updateDuration()
+        }
+    }
+    
     func stopRecording() -> URL? {
         audioRecorder?.stop()
-        timer?.invalidate()
-        levelTimer?.invalidate()
+        recordingTimer?.invalidate()
         isRecording = false
-        audioLevels = Array(repeating: 0, count: 30)
-        return recordingURL
+        isPaused = false
+        
+        let duration = recordingDuration
+        recordingDuration = 0
+        
+        // Only return URL if duration > 0.5 seconds (avoid very short recordings)
+        guard duration > 0.5, let url = recordingURL else {
+            return nil
+        }
+        
+        return url
     }
-
+    
+    private func updateDuration() {
+        guard let startTime = recordingStartTime else { return }
+        recordingDuration = Date().timeIntervalSince(startTime)
+    }
+    
     func cancelRecording() {
         audioRecorder?.stop()
-        audioRecorder?.deleteRecording()
-        timer?.invalidate()
-        levelTimer?.invalidate()
+        recordingTimer?.invalidate()
         isRecording = false
-        recordingURL = nil
+        isPaused = false
         recordingDuration = 0
-        audioLevels = Array(repeating: 0, count: 30)
+        
+        if let url = recordingURL {
+            try? FileManager.default.removeItem(at: url)
+            recordingURL = nil
+        }
+    }
+    
+    func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+        if !flag {
+            cancelRecording()
+        }
     }
 }

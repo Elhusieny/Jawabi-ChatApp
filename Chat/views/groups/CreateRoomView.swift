@@ -16,7 +16,9 @@ struct CreateRoomView: View {
     @State private var showingImagePicker = false
     @State private var selectedImage: UIImage?
     @State private var gradientAnimation = false
-    
+    @Environment(\.dismiss) var dismiss
+       var onRoomCreated: (() -> Void)?  // Add this closure
+       
     private let iconGradientColors: [Color] = [.blue, .purple, .pink]
     
     var body: some View {
@@ -185,11 +187,12 @@ struct CreateRoomView: View {
             }
             .alert("Success", isPresented: .constant(viewModel.successMessage != nil)) {
                 Button("OK") {
+                    NotificationCenter.default.post(name: NSNotification.Name("ChatListShouldRefresh"), object: nil)
                     presentationMode.wrappedValue.dismiss()
                 }
-            } message: {
-                Text(viewModel.successMessage ?? "")
             }
+                
+        
         }
     }
     
@@ -201,6 +204,7 @@ struct CreateRoomView: View {
             memberIds: memberIds,
             image: selectedImage
         )
+        
     }
 }
 

@@ -7,7 +7,8 @@ struct LoginResponse: Codable {
     let email: String?
     let displayName: String?
     let serverUrl: String?
-    
+    let userId: String?        // ADD THIS
+    let expiration: String?    // ADD THIS (optional)
     // Handle different response structures
     enum CodingKeys: String, CodingKey {
         case token
@@ -15,6 +16,8 @@ struct LoginResponse: Codable {
         case email
         case displayName
         case serverUrl = "server_url"
+        case userId
+        case expiration
     }
     
     // Flexible initializer for different response formats
@@ -26,6 +29,8 @@ struct LoginResponse: Codable {
         email = try container.decodeIfPresent(String.self, forKey: .email)
         displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
         serverUrl = try container.decodeIfPresent(String.self, forKey: .serverUrl)
+        userId = try container.decodeIfPresent(String.self, forKey: .userId)      // ADD THIS
+         expiration = try container.decodeIfPresent(String.self, forKey: .expiration) // ADD THIS
     }
 }
 
@@ -193,14 +198,62 @@ struct SeenStatus {
     let timestamp: Date
 }
 
-// MARK: - 2. Update Message Model to include seen status
+// MARK: - Message Type Enum (Matching Backend)
+enum MessageType: Int, Codable {
+    case text = 0
+    case image = 1
+    case voice = 2
+    case file = 3
+    case video = 4
+}
+
+
 struct Message: Codable, Identifiable {
     let id: Int
-    let text: String
+    let displayText: String
     let name: String
     let timestamp: String
+    
+    // ── New backend fields ──────────────────────────────
+    let fileUrl: String?
+    let type: MessageType?
+    let isFile: Bool?
+    let fileName: String?
+    let fileSize: Int64?
+    let isSafe: Bool?
     var isRead: Bool?
-    var seenBy: [String]? // NEW: Track who has seen the message
+    var seenBy: [String]?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, displayText, name, timestamp
+        case fileUrl, type, isFile, fileName, fileSize
+        case fileExtension = "extension"   // reserved keyword → mapped
+        case isSafe, isRead, seenBy
+    }
+    
+    // Stored under a non-keyword property name
+    let fileExtension: String?
+    
+    init(id: Int,             displayText: String, name: String, timestamp: String,
+         fileUrl: String? = nil, type: MessageType? = nil,
+         isFile: Bool? = nil, fileName: String? = nil,
+         fileSize: Int64? = nil, fileExtension: String? = nil,
+         isSafe: Bool? = nil,
+         isRead: Bool? = nil, seenBy: [String]? = nil) {
+        self.id = id
+        self.displayText =             displayText
+        self.name = name
+        self.timestamp = timestamp
+        self.fileUrl = fileUrl
+        self.type = type
+        self.isFile = isFile
+        self.fileName = fileName
+        self.fileSize = fileSize
+        self.fileExtension = fileExtension
+        self.isSafe = isSafe
+        self.isRead = isRead
+        self.seenBy = seenBy
+    }
     
     var date: Date {
         let formatter = ISO8601DateFormatter()
@@ -219,15 +272,6 @@ struct Message: Codable, Identifiable {
         formatter.dateFormat = "HH:mm"
         return formatter.string(from: date)
     }
-    
-    init(id: Int, text: String, name: String, timestamp: String, isRead: Bool? = nil, seenBy: [String]? = nil) {
-        self.id = id
-        self.text = text
-        self.name = name
-        self.timestamp = timestamp
-        self.isRead = isRead
-        self.seenBy = seenBy
-    }
 }
 // MARK: - ChatUser Model
 struct ChatUser: Codable {
@@ -235,7 +279,7 @@ struct ChatUser: Codable {
     let role: Int
 }
 
-// MARK: - SignalR Received Message Model
+// MARK: - SignalR Received Message Model - UPDATED with backend fields
 struct ReceivedPrivateMessage: Codable {
     let From: String?
     let from: String?
@@ -245,13 +289,19 @@ struct ReceivedPrivateMessage: Codable {
     let timeStamp: String?
     let ChatId: Int?
     let chatId: Int?
-    let MessageId: Int? // Add message ID from server
+    let MessageId: Int?
     let messageId: Int?
     
-       // ✅ ADD THESE FIELDS (they come from your server log)
-       let isFile: Bool?
-       let isSafe: Bool?
-       let fileUrl: String?
+    // Existing fields
+    let isFile: Bool?
+    let isSafe: Bool?
+    let fileUrl: String?
+    
+    // ✅ NEW FIELDS from backend DTO
+    let fileName: String?
+    let fileSize: Int64?
+    let `extension`: String?
+    let type: String?  // Backend sends Type as string: "0", "1", etc.
     
     var name: String {
         return from ?? From ?? "Unknown"
@@ -273,12 +323,27 @@ struct ReceivedPrivateMessage: Codable {
         return timeStamp ?? TimeStamp ?? Date().ISO8601Format()
     }
     
+    // Convert type string to MessageType enum
+    var messageType: MessageType {
+        guard let typeString = type, let typeInt = Int(typeString) else {
+            return .text
+        }
+        return MessageType(rawValue: typeInt) ?? .text
+    }
+    
     func toMessage() -> Message {
-        return Message(
+        Message(
             id: actualMessageId,
-            text: messageText,
+            displayText: messageText,
             name: name,
             timestamp: timestampString,
+            fileUrl: fileUrl,
+            type: messageType,
+            isFile: isFile,
+            fileName: fileName,
+            fileSize: fileSize,
+            fileExtension: `extension`,
+            isSafe: isSafe,
             isRead: false
         )
     }
@@ -308,7 +373,7 @@ struct GetAllChatsResponse: Codable {
     func toChat() -> Chat {
         let message = lastMessage.flatMap { lastMsg -> Message? in
             guard let text = lastMsg.text, let time = lastMsg.time else { return nil }
-            return Message(id: 0, text: text, name: name ?? "Unknown", timestamp: time)
+            return Message(id: 0,             displayText: text, name: name ?? "Unknown", timestamp: time)
         }
         
         return Chat(
@@ -388,28 +453,62 @@ struct FileStatusUpdatedData: Codable {
     }
 }
 
+// MARK: - Updated MessageWithSeenStatus with new fields
 struct MessageWithSeenStatus: Codable, Identifiable {
     let id: Int
     let from: String
-    let text: String
+    let displayText: String
     let timeStamp: String
     let isRead: Bool
     let isFile: Bool
     let isSafe: Bool
     let fileUrl: String?
     
+    // ✅ NEW FIELDS
+    let fileName: String?
+    let fileSize: Int64?
+    let `extension`: String?
+    let type: String?
+    
+    var messageType: MessageType {
+        guard let typeString = type, let typeInt = Int(typeString) else {
+            return .text
+        }
+        return MessageType(rawValue: typeInt) ?? .text
+    }
+    
+    func toMessage() -> Message {
+        Message(
+            id: id,
+            displayText: displayText,
+            name: from,
+            timestamp: timeStamp,
+            fileUrl: fileUrl,
+            type: messageType,
+            isFile: isFile,
+            fileName: fileName,
+            fileSize: fileSize,
+            fileExtension: `extension`,
+            isSafe: isSafe,
+            isRead: isRead
+        )
+    }
+    
     enum CodingKeys: String, CodingKey {
         case id
         case from
-        case text
+        case displayText
         case timeStamp
         case isRead
         case isFile
         case isSafe
         case fileUrl
+        case fileName
+        case fileSize
+        case `extension`
+        case type
     }
 }
-
 // MARK: - Blocked Message Tracking
 struct BlockedMessageInfo {
     let messageId: Int
@@ -426,5 +525,19 @@ struct ErrorMessage: Codable {
     enum CodingKeys: String, CodingKey {
         case message
         case chatId
+    }
+}
+// In your Chat.swift or in the extension
+extension Chat {
+    var isCurrentUserAdmin: Bool {
+        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+        print("🔍 Checking admin: Current user ID = \(currentUserId)")
+        print("🔍 Users in chat: \(users)")
+        
+        let isAdmin = users.contains { user in
+            user.userId == currentUserId && user.role == 0
+        }
+        print("🔍 Is admin: \(isAdmin)")
+        return isAdmin
     }
 }

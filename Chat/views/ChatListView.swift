@@ -27,13 +27,7 @@ struct ChatListView: View {
     
     /// Animation state for gradient backgrounds
     @State private var gradientAnimation = false
-    
-    /// Unique identifier for forcing view refresh
-    @State private var refreshID = UUID()
-    
-    /// Timestamp of last list update
-    @State private var lastUpdateTime = Date()
-    
+   
     /// ViewModel for profile picture operations
     @EnvironmentObject var profilePictureVM: ProfilePictureViewModel
     
@@ -46,8 +40,7 @@ struct ChatListView: View {
     /// Currently selected chat ID for navigation
     @State private var selectedChatId: Int?
     
-    /// Force refresh toggle
-    @State private var forceUpdate = false
+   
     
     /// Controls presentation of settings view
        @State private var showingSettings = false
@@ -92,7 +85,7 @@ struct ChatListView: View {
         } else {
             return chatViewModel.chats.filter { chat in
                 chat.name.localizedCaseInsensitiveContains(searchText) ||
-                chat.messages.last?.text.localizedCaseInsensitiveContains(searchText) == true
+                chat.messages.last?.displayText.localizedCaseInsensitiveContains(searchText) == true
             }
         }
     }
@@ -104,24 +97,12 @@ struct ChatListView: View {
         NavigationStack {
             if #available(iOS 17.0, *) {
                 ZStack {
-                    // Animated Background
-                    LinearGradient(
-                        colors: gradientAnimation ? gradientColors1 : gradientColors2,
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    .ignoresSafeArea()
-                    .onAppear {
-                        withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
-                            gradientAnimation.toggle()
-                        }
-                    }
+                    AnimatedBackground()  // replaces the inline LinearGradient + onAppear
                     if chatViewModel.chats.isEmpty {
                         emptyStateView
                     } else {
                         chatListView
-                            .id(refreshID)
-                            .id(forceUpdate) // Force refresh when this changes
+                           
                     }
                 }
                 .navigationTitle("Chats")
@@ -134,6 +115,7 @@ struct ChatListView: View {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         HStack(spacing: 16) {
                             searchButton
+                            newChat
                             menuButton
                         }
                     }
@@ -141,9 +123,29 @@ struct ChatListView: View {
                 .searchable(text: $searchText, isPresented: $showingSearch, prompt: "Search chats...")
                 .sheet(isPresented: $showingNewChat) {
                     NewChatView(chatViewModel: chatViewModel, isPresented: $showingNewChat)
+                }.onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ChatListShouldRefresh"))) { _ in
+                    print("📢 Received refresh notification")
+                    chatViewModel.fetchAllChatsFromServer()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ChatMembersUpdated"))) { notification in
+                    if let chatId = notification.userInfo?["chatId"] as? Int {
+                        print("🔄 Members updated for chat \(chatId)")
+                        // Refresh specific chat or whole list
+                        chatViewModel.fetchAllChatsFromServer()
+                    }
                 }
                 .sheet(isPresented: $showingCreateRoom) {
-                    CreateRoomView()
+                    CreateRoomView {
+                        // This will be called when room is successfully created
+                        print("✅ Room created, refreshing chat list...")
+                        chatViewModel.refreshChats()
+                        chatViewModel.fetchAllChatsFromServer()
+                        
+                        // Also join any new chat rooms after a short delay
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            chatViewModel.autoJoinAllChats()
+                        }
+                    }
                 }
                 .sheet(isPresented: $showingProfile) {
                     ProfileView(authViewModel: authViewModel, isPresented: $showingProfile)
@@ -155,29 +157,7 @@ struct ChatListView: View {
                 }
                 .onAppear {
                     chatViewModel.loadSavedChats()
-                    // ⚠️ Comment out notification observer - we're using @Published
-                    // setupChatListObservers()
-                    print("📱 ChatListView appeared with \(chatViewModel.chats.count) chats")
-                }
-                // FIXED: Watch for ANY changes to chats array
-                .onChange(of: chatViewModel.chats) { newChats in
-                    refreshID = UUID()
-                    forceUpdate.toggle()
-                    lastUpdateTime = Date()
-                    print("🔄 Chat list CHANGED - now has \(newChats.count) chats")
-                    
-                    // Debug: Print unread counts
-                    for chat in newChats {
-                        if chat.unreadCount > 0 {
-                            print("📢 Chat \(chat.name) has \(chat.unreadCount) unread messages")
-                        }
-                    }
-                }
-                // FIXED: Also watch for chatsUpdated timestamp
-                .onChange(of: chatViewModel.chatsUpdated) { _ in
-                    print("🔄 chatsUpdated triggered UI refresh")
-                    refreshID = UUID()
-                    forceUpdate.toggle()
+                    chatViewModel.loadAllUsers() // Preload users when view appears
                 }
                 // Optional: Alert for new chats
                 .alert("New Chat", isPresented: $newChatAlert.isPresented) {
@@ -200,23 +180,23 @@ struct ChatListView: View {
         .accentColor(primaryColor)
     }
     
-    private func setupChatListObservers() {
-        // Set up observer for chat list refresh notifications
-        NotificationCenter.default.addObserver(
-            forName: NSNotification.Name("ChatListShouldRefresh"),
-            object: nil,
-            queue: .main
-        ) { notification in
-            refreshID = UUID()
-            lastUpdateTime = Date()
-            
-            if let chatId = notification.userInfo?["chatId"] as? Int {
-                print("🔄 Chat list refreshed for chat \(chatId)")
-            } else {
-                print("🔄 Chat list refreshed generally")
-            }
-        }
-    }
+//    private func setupChatListObservers() {
+//        // Set up observer for chat list refresh notifications
+//        NotificationCenter.default.addObserver(
+//            forName: NSNotification.Name("ChatListShouldRefresh"),
+//            object: nil,
+//            queue: .main
+//        ) { notification in
+//            refreshID = UUID()
+//            lastUpdateTime = Date()
+//            
+//            if let chatId = notification.userInfo?["chatId"] as? Int {
+//                print("🔄 Chat list refreshed for chat \(chatId)")
+//            } else {
+//                print("🔄 Chat list refreshed generally")
+//            }
+//        }
+//    }
     
     // MARK: - Subviews
     
@@ -328,9 +308,8 @@ struct ChatListView: View {
                     ) {
                         ChatRow(
                             chat: chat,
-                            gradientAnimation: gradientAnimation,
                             primaryColor: primaryColor,
-                            chatViewModel: chatViewModel  // ADD THIS
+                            chatViewModel: chatViewModel  // removed gradientAnimation
                         )
                         .contentShape(Rectangle())
                     }
@@ -399,22 +378,54 @@ struct ChatListView: View {
         }
     }
     
+    private var newChat: some View {
+        Button {
+              guard UserDefaults.standard.string(forKey: "authToken") != nil else {
+                  showAlert(title: "Authentication Required",
+                           message: "Please log in to create a new chat")
+                  return
+              }
+              
+              showingNewChat = true
+              // Use cached users, don't force refresh
+              chatViewModel.loadAllUsers(forceRefresh: false)
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(primaryColorLight)
+                    .frame(width: 36, height: 36)
+                
+                Image(systemName :"message")
+                    .font(.title3)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: iconGradientColors,
+                            startPoint: gradientAnimation ? .top : .leading,
+                            endPoint: gradientAnimation ? .bottom : .trailing
+                        )
+                    )
+                    .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: gradientAnimation)
+            }
+        }
+    }
+   
+    
     // UPDATED: Menu button with settings option
        private var menuButton: some View {
            Menu {
                Section {
-                   Button(action: {
-                       guard UserDefaults.standard.string(forKey: "authToken") != nil else {
-                           showAlert(title: "Authentication Required",
-                                    message: "Please log in to create a new chat")
-                           return
-                       }
-                       
-                       showingNewChat = true
-                       chatViewModel.loadAllUsers()
-                   }) {
-                       Label("New Chat", systemImage: "message")
-                   }
+//                   Button(action: {
+//                       guard UserDefaults.standard.string(forKey: "authToken") != nil else {
+//                           showAlert(title: "Authentication Required",
+//                                    message: "Please log in to create a new chat")
+//                           return
+//                       }
+//                       
+//                       showingNewChat = true
+//                       chatViewModel.loadAllUsers()
+//                   }) {
+//                       Label("New Chat", systemImage: "message")
+//                   }
                    
                    Button(action: {
                        guard UserDefaults.standard.string(forKey: "authToken") != nil else {
@@ -438,11 +449,12 @@ struct ChatListView: View {
                        Label("Settings", systemImage: "gear")
                    }
                    
-                   Button(action: {
-                       showingProfile = true
-                   }) {
-                       Label("Account", systemImage: "person.circle")
-                   }
+//                   Button(action: {
+//                       showingProfile = true
+//                   }) {
+//                       Label("Account", systemImage: "person.circle")
+//                   }
+                   
                }
                
                Divider()
@@ -527,250 +539,72 @@ struct ChatListView: View {
     }
 }
 
-// Update the ChatRow struct in ChatListView
 struct ChatRow: View {
     let chat: Chat
-    let gradientAnimation: Bool
     let primaryColor: Color
     @ObservedObject var chatViewModel: ChatViewModel
-    
-    // Add computed property for user initials
-    private var userInitials: String {
-        return chat.name.getInitials()
+
+    // MARK: - Live Data from ViewModel
+    private var liveChat: Chat? {
+        chatViewModel.chats.first(where: { $0.id == chat.id })
     }
-    
-   
-    // FIXED: Add @State to force updates
-    @State private var updateTrigger = false
-    
-    private var iconGradientColors: [Color] {
-        [primaryColor, Color(hex: "#9d73d2"), Color(hex: "#d273a3")]
+
+    private var liveUnreadCount: Int {
+        liveChat?.unreadCount ?? chat.unreadCount
     }
-    
-    private var lastMessageTime: String {
-        return chat.lastMessageTime
+
+    private var liveIsOnline: Bool {
+        liveChat?.isOnline ?? chat.isOnline
     }
-    
-    private var lastMessagePreview: String {
-        // Check if someone is typing
+
+    private var liveName: String {
+        liveChat?.name ?? chat.name
+    }
+
+    private var livePictureUrl: String {
+        liveChat?.fullPictureUrl ?? chat.fullPictureUrl
+    }
+
+    private var liveLastMessageTime: String {
+        liveChat?.lastMessageTime ?? chat.lastMessageTime
+    }
+
+    private var liveLastMessagePreview: String {
         if let typingUser = chatViewModel.getTypingStatus(for: chat.id) {
             return "\(typingUser) is typing..."
         }
-        return chat.lastMessageText
+        return liveChat?.lastMessageText ?? chat.lastMessageText
     }
-    
+
     private var isTyping: Bool {
         chatViewModel.getTypingStatus(for: chat.id) != nil
     }
-    
-    private var isOnline: Bool {
-        chatViewModel.isUserOnline(for: chat)
+
+    private var userInitials: String {
+        liveName.getInitials()
     }
-    
+
+    private var iconGradientColors: [Color] {
+        [primaryColor, Color(hex: "#9d73d2"), Color(hex: "#d273a3")]
+    }
+
+    // MARK: - Body
     var body: some View {
         HStack(spacing: 16) {
-            // Profile Image with online indicator
-            // In ChatRow struct, update the AsyncImage part:
+
+            // MARK: Avatar + Online Indicator
             ZStack(alignment: .bottomTrailing) {
-                // In the default image view, use:
-                Text(userInitials)
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: iconGradientColors,
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                // User profile image
-                if chat.type == 1 { // Private chat
-                    if chat.fullPictureUrl.isEmpty || chat.fullPictureUrl.contains("default.png") {
-                        // Show default image with gradient
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [primaryColor.opacity(0.3), Color(hex: "#9d73d2").opacity(0.3)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 56, height: 56)
-                            .overlay(
-                                // Show user initials or icon
-                                Group {
-                                    if let firstChar = chat.name.first {
-                                        Text(String(firstChar))
-                                            .font(.system(size: 20, weight: .bold))
-                                            .foregroundStyle(
-                                                LinearGradient(
-                                                    colors: iconGradientColors,
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                )
-                                            )
-                                    } else {
-                                        Image(systemName: "person.fill")
-                                            .font(.title2)
-                                            .foregroundStyle(
-                                                LinearGradient(
-                                                    colors: iconGradientColors,
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                )
-                                            )
-                                    }
-                                }
-                            )
-                            .overlay(
-                                Circle()
-                                    .stroke(
-                                        LinearGradient(
-                                            colors: [primaryColor, Color(hex: "#9d73d2")],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        ),
-                                        lineWidth: 2
-                                    )
-                            )
+                if chat.type == 1 {
+                    if livePictureUrl.isEmpty || livePictureUrl.contains("default.png") {
+                        defaultAvatarView
                     } else {
-                        // Try to load the actual image
-                        AsyncImage(url: URL(string: chat.fullPictureUrl)) { phase in
-                            switch phase {
-                            case .empty:
-                                Circle()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [primaryColor.opacity(0.2), Color(hex: "#9d73d2").opacity(0.2)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                                    .frame(width: 56, height: 56)
-                                    .overlay(
-                                        ProgressView()
-                                            .scaleEffect(0.8)
-                                            .tint(primaryColor)
-                                    )
-                                    .overlay(
-                                        Circle()
-                                            .stroke(
-                                                LinearGradient(
-                                                    colors: [primaryColor.opacity(0.3), Color(hex: "#9d73d2").opacity(0.3)],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                ),
-                                                lineWidth: 1
-                                            )
-                                    )
-                                
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 56, height: 56)
-                                    .clipShape(Circle())
-                                    .overlay(
-                                        Circle()
-                                            .stroke(
-                                                LinearGradient(
-                                                    colors: [primaryColor, Color(hex: "#9d73d2")],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                ),
-                                                lineWidth: 2
-                                            )
-                                    )
-                                
-                            case .failure:
-                                // Fallback to default image
-                                Circle()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [primaryColor.opacity(0.3), Color(hex: "#9d73d2").opacity(0.3)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                                    .frame(width: 56, height: 56)
-                                    .overlay(
-                                        Group {
-                                            if let firstChar = chat.name.first {
-                                                Text(String(firstChar))
-                                                    .font(.system(size: 20, weight: .bold))
-                                                    .foregroundStyle(
-                                                        LinearGradient(
-                                                            colors: iconGradientColors,
-                                                            startPoint: .topLeading,
-                                                            endPoint: .bottomTrailing
-                                                        )
-                                                    )
-                                            } else {
-                                                Image(systemName: "person.fill")
-                                                    .font(.title2)
-                                                    .foregroundStyle(
-                                                        LinearGradient(
-                                                            colors: iconGradientColors,
-                                                            startPoint: .topLeading,
-                                                            endPoint: .bottomTrailing
-                                                        )
-                                                    )
-                                            }
-                                        }
-                                    )
-                                    .overlay(
-                                        Circle()
-                                            .stroke(
-                                                LinearGradient(
-                                                    colors: [primaryColor, Color(hex: "#9d73d2")],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                ),
-                                                lineWidth: 2
-                                            )
-                                    )
-                                
-                            @unknown default:
-                                EmptyView()
-                            }
-                        }
+                        asyncAvatarView
                     }
                 } else {
-                    // Group chat - show multiple people icon
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(hex: "#73d2a3").opacity(0.3), Color(hex: "#9d73d2").opacity(0.3)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 56, height: 56)
-                        .overlay(
-                            Image(systemName: "person.2.fill")
-                                .font(.title2)
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [Color(hex: "#73d2a3"), Color(hex: "#9d73d2")],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                        )
-                        .overlay(
-                            Circle()
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [Color(hex: "#73d2a3"), Color(hex: "#9d73d2")],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    ),
-                                    lineWidth: 2
-                                )
-                        )
+                    groupAvatarView
                 }
-                
-                // Online indicator for private chats
-                if chat.type == 1 && chat.isOnline {
+
+                if chat.type == 1 && liveIsOnline {
                     Circle()
                         .fill(Color.green)
                         .frame(width: 14, height: 14)
@@ -781,10 +615,11 @@ struct ChatRow: View {
                         .shadow(color: Color.green.opacity(0.5), radius: 4)
                 }
             }
-            
+
+            // MARK: Name + Message Preview
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(chat.name)
+                    Text(liveName)
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(
                             LinearGradient(
@@ -794,18 +629,18 @@ struct ChatRow: View {
                             )
                         )
                         .lineLimit(1)
-                    
+
                     Spacer()
-                    
-                    Text(lastMessageTime)
+
+                    Text(liveLastMessageTime)
                         .font(.system(size: 13))
                         .foregroundColor(.gray)
                 }
-                
+
                 HStack(alignment: .top, spacing: 4) {
                     if isTyping {
                         HStack(spacing: 3) {
-                            Text(lastMessagePreview)
+                            Text(liveLastMessagePreview)
                                 .font(.system(size: 15))
                                 .foregroundStyle(
                                     LinearGradient(
@@ -815,21 +650,19 @@ struct ChatRow: View {
                                     )
                                 )
                                 .lineLimit(1)
-                            
+
                             TypingDotsView(primaryColor: primaryColor)
                         }
                     } else {
-                        // FIXED: Force bold when unread
-                        Text(lastMessagePreview)
-                            .font(.system(size: 15, weight: chat.unreadCount > 0 ? .semibold : .regular))
-                            .foregroundColor(chat.unreadCount > 0 ? .primary : .secondary)
+                        Text(liveLastMessagePreview)
+                            .font(.system(size: 15, weight: liveUnreadCount > 0 ? .semibold : .regular))
+                            .foregroundColor(liveUnreadCount > 0 ? .primary : .secondary)
                             .lineLimit(2)
                     }
-                    
+
                     Spacer()
-                    
-                    // FIXED: Show badge when unread
-                    if chat.unreadCount > 0 {
+
+                    if liveUnreadCount > 0 {
                         ZStack {
                             Circle()
                                 .fill(
@@ -840,8 +673,8 @@ struct ChatRow: View {
                                     )
                                 )
                                 .frame(width: 22, height: 22)
-                            
-                            Text("\(min(chat.unreadCount, 99))")
+
+                            Text("\(min(liveUnreadCount, 99))")
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundColor(.white)
                         }
@@ -853,22 +686,156 @@ struct ChatRow: View {
         .padding(.vertical, 12)
         .padding(.horizontal, 16)
         .background(
-            chat.unreadCount > 0
+            liveUnreadCount > 0
                 ? Color(.systemBackground)
                 : Color(.systemBackground).opacity(0.9)
         )
         .contentShape(Rectangle())
-        // FIXED: Force update when chat data changes
-        .onChange(of: chat.unreadCount) { newValue in
-            updateTrigger.toggle()
-            print("🔄 ChatRow unread changed to \(newValue) for \(chat.name)")
-        }
-        .onChange(of: chat.lastMessageText) { _ in
-            updateTrigger.toggle()
+       
+    }
+
+    // MARK: - Avatar Subviews
+
+    private var defaultAvatarView: some View {
+        Circle()
+            .fill(
+                LinearGradient(
+                    colors: [primaryColor.opacity(0.3), Color(hex: "#9d73d2").opacity(0.3)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .frame(width: 56, height: 56)
+            .overlay(
+                Group {
+                    if let firstChar = liveName.first {
+                        Text(String(firstChar))
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: iconGradientColors,
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    } else {
+                        Image(systemName: "person.fill")
+                            .font(.title2)
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: iconGradientColors,
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    }
+                }
+            )
+            .overlay(
+                Circle()
+                    .stroke(
+                        LinearGradient(
+                            colors: [primaryColor, Color(hex: "#9d73d2")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 2
+                    )
+            )
+    }
+
+    private var asyncAvatarView: some View {
+        let url = livePictureUrl
+        return AsyncImage(url: URL(string: url)) { phase in
+            switch phase {
+            case .empty:
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [primaryColor.opacity(0.2), Color(hex: "#9d73d2").opacity(0.2)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 56, height: 56)
+                    .overlay(
+                        ProgressView()
+                            .scaleEffect(0.8)
+                            .tint(primaryColor)
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(
+                                LinearGradient(
+                                    colors: [primaryColor.opacity(0.3), Color(hex: "#9d73d2").opacity(0.3)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    )
+
+            case .success(let image):
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 56, height: 56)
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(
+                                LinearGradient(
+                                    colors: [primaryColor, Color(hex: "#9d73d2")],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 2
+                            )
+                    )
+
+            case .failure:
+                defaultAvatarView
+
+            @unknown default:
+                EmptyView()
+            }
         }
     }
-}
 
+    private var groupAvatarView: some View {
+        Circle()
+            .fill(
+                LinearGradient(
+                    colors: [Color(hex: "#73d2a3").opacity(0.3), Color(hex: "#9d73d2").opacity(0.3)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .frame(width: 56, height: 56)
+            .overlay(
+                Image(systemName: "person.2.fill")
+                    .font(.title2)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color(hex: "#73d2a3"), Color(hex: "#9d73d2")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            )
+            .overlay(
+                Circle()
+                    .stroke(
+                        LinearGradient(
+                            colors: [Color(hex: "#73d2a3"), Color(hex: "#9d73d2")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 2
+                    )
+            )
+    }
+}
 // ADD THIS: Animated typing dots view
 struct TypingDotsView: View {
     let primaryColor: Color
@@ -916,7 +883,7 @@ extension Chat {
     var lastMessageText: String {
         // Sort to get most recent message
         let sortedMessages = messages.sorted { $0.date > $1.date }
-        return sortedMessages.first?.text ?? "No messages yet"
+        return sortedMessages.first?.displayText ?? "No messages yet"
     }
     
     var lastMessageTime: String {
@@ -978,5 +945,34 @@ extension String {
             return String(firstChar).uppercased()
         }
         return "?"
+    }
+}
+// New isolated view — animates without affecting parent state
+struct AnimatedBackground: View {
+    @State private var animating = false
+    
+    private let colors1: [Color] = [
+        Color(hex: "#7373d2").opacity(0.1),
+        Color(hex: "#9d73d2").opacity(0.05),
+        Color(hex: "#d273a3").opacity(0.1)
+    ]
+    private let colors2: [Color] = [
+        Color(hex: "#9d73d2").opacity(0.1),
+        Color(hex: "#7373d2").opacity(0.05),
+        Color(hex: "#73d2b8").opacity(0.1)
+    ]
+    
+    var body: some View {
+        LinearGradient(
+            colors: animating ? colors1 : colors2,
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .ignoresSafeArea()
+        .onAppear {
+            withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
+                animating.toggle()
+            }
+        }
     }
 }
