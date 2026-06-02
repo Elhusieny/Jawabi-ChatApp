@@ -441,23 +441,23 @@ struct ChatListView: View {
                
                Divider()
                
-               // NEW: Settings option
-               Section {
-                   Button(action: {
-                       showingSettings = true
-                   }) {
-                       Label("Settings", systemImage: "gear")
-                   }
-                   
+//               // NEW: Settings option
+//               Section {
 //                   Button(action: {
-//                       showingProfile = true
+//                       showingSettings = true
 //                   }) {
-//                       Label("Account", systemImage: "person.circle")
+//                       Label("Settings", systemImage: "gear")
 //                   }
-                   
-               }
-               
-               Divider()
+//                   
+////                   Button(action: {
+////                       showingProfile = true
+////                   }) {
+////                       Label("Account", systemImage: "person.circle")
+////                   }
+//                   
+//               }
+//               
+//               Divider()
                
                // Help & Support section
                Section {
@@ -543,55 +543,55 @@ struct ChatRow: View {
     let chat: Chat
     let primaryColor: Color
     @ObservedObject var chatViewModel: ChatViewModel
-
+    
     // MARK: - Live Data from ViewModel
     private var liveChat: Chat? {
         chatViewModel.chats.first(where: { $0.id == chat.id })
     }
-
+    
     private var liveUnreadCount: Int {
         liveChat?.unreadCount ?? chat.unreadCount
     }
-
+    
     private var liveIsOnline: Bool {
         liveChat?.isOnline ?? chat.isOnline
     }
-
+    
     private var liveName: String {
         liveChat?.name ?? chat.name
     }
-
+    
     private var livePictureUrl: String {
         liveChat?.fullPictureUrl ?? chat.fullPictureUrl
     }
-
+    
     private var liveLastMessageTime: String {
         liveChat?.lastMessageTime ?? chat.lastMessageTime
     }
-
+    
     private var liveLastMessagePreview: String {
         if let typingUser = chatViewModel.getTypingStatus(for: chat.id) {
             return "\(typingUser) is typing..."
         }
         return liveChat?.lastMessageText ?? chat.lastMessageText
     }
-
+    
     private var isTyping: Bool {
         chatViewModel.getTypingStatus(for: chat.id) != nil
     }
-
+    
     private var userInitials: String {
         liveName.getInitials()
     }
-
+    
     private var iconGradientColors: [Color] {
         [primaryColor, Color(hex: "#9d73d2"), Color(hex: "#d273a3")]
     }
-
+    
     // MARK: - Body
     var body: some View {
         HStack(spacing: 16) {
-
+            
             // MARK: Avatar + Online Indicator
             ZStack(alignment: .bottomTrailing) {
                 if chat.type == 1 {
@@ -603,7 +603,7 @@ struct ChatRow: View {
                 } else {
                     groupAvatarView
                 }
-
+                
                 if chat.type == 1 && liveIsOnline {
                     Circle()
                         .fill(Color.green)
@@ -615,7 +615,7 @@ struct ChatRow: View {
                         .shadow(color: Color.green.opacity(0.5), radius: 4)
                 }
             }
-
+            
             // MARK: Name + Message Preview
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -629,14 +629,14 @@ struct ChatRow: View {
                             )
                         )
                         .lineLimit(1)
-
+                    
                     Spacer()
-
+                    
                     Text(liveLastMessageTime)
                         .font(.system(size: 13))
                         .foregroundColor(.gray)
                 }
-
+                
                 HStack(alignment: .top, spacing: 4) {
                     if isTyping {
                         HStack(spacing: 3) {
@@ -650,7 +650,7 @@ struct ChatRow: View {
                                     )
                                 )
                                 .lineLimit(1)
-
+                            
                             TypingDotsView(primaryColor: primaryColor)
                         }
                     } else {
@@ -659,9 +659,9 @@ struct ChatRow: View {
                             .foregroundColor(liveUnreadCount > 0 ? .primary : .secondary)
                             .lineLimit(2)
                     }
-
+                    
                     Spacer()
-
+                    
                     if liveUnreadCount > 0 {
                         ZStack {
                             Circle()
@@ -673,7 +673,7 @@ struct ChatRow: View {
                                     )
                                 )
                                 .frame(width: 22, height: 22)
-
+                            
                             Text("\(min(liveUnreadCount, 99))")
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundColor(.white)
@@ -687,20 +687,20 @@ struct ChatRow: View {
         .padding(.horizontal, 16)
         .background(
             liveUnreadCount > 0
-                ? Color(.systemBackground)
-                : Color(.systemBackground).opacity(0.9)
+            ? Color(.systemBackground)
+            : Color(.systemBackground).opacity(0.9)
         )
         .contentShape(Rectangle())
-       
+        
     }
-
+    
     // MARK: - Avatar Subviews
-
+    
     private var defaultAvatarView: some View {
         Circle()
             .fill(
                 LinearGradient(
-                    colors: [primaryColor.opacity(0.3), Color(hex: "#9d73d2").opacity(0.3)],
+                    colors: [primaryColor.opacity(0.3), Color("#9d73d2").opacity(0.3)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -735,7 +735,7 @@ struct ChatRow: View {
                 Circle()
                     .stroke(
                         LinearGradient(
-                            colors: [primaryColor, Color(hex: "#9d73d2")],
+                            colors: [primaryColor, Color("#9d73d2")],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
@@ -743,7 +743,7 @@ struct ChatRow: View {
                     )
             )
     }
-
+    
     private var asyncAvatarView: some View {
         let url = livePictureUrl
         return AsyncImage(url: URL(string: url)) { phase in
@@ -752,7 +752,7 @@ struct ChatRow: View {
                 Circle()
                     .fill(
                         LinearGradient(
-                            colors: [primaryColor.opacity(0.2), Color(hex: "#9d73d2").opacity(0.2)],
+                            colors: [primaryColor.opacity(0.2), Color("#9d73d2").opacity(0.2)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -767,14 +767,14 @@ struct ChatRow: View {
                         Circle()
                             .stroke(
                                 LinearGradient(
-                                    colors: [primaryColor.opacity(0.3), Color(hex: "#9d73d2").opacity(0.3)],
+                                    colors: [primaryColor.opacity(0.3), Color("#9d73d2").opacity(0.3)],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 ),
                                 lineWidth: 1
                             )
                     )
-
+                
             case .success(let image):
                 image
                     .resizable()
@@ -785,55 +785,91 @@ struct ChatRow: View {
                         Circle()
                             .stroke(
                                 LinearGradient(
-                                    colors: [primaryColor, Color(hex: "#9d73d2")],
+                                    colors: [primaryColor, Color("#9d73d2")],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 ),
                                 lineWidth: 2
                             )
                     )
-
+                
             case .failure:
                 defaultAvatarView
-
+                
             @unknown default:
                 EmptyView()
             }
         }
     }
-
+    
+    // In ChatListView.swift - Update groupAvatarView
+    
     private var groupAvatarView: some View {
-        Circle()
-            .fill(
-                LinearGradient(
-                    colors: [Color(hex: "#73d2a3").opacity(0.3), Color(hex: "#9d73d2").opacity(0.3)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .frame(width: 56, height: 56)
-            .overlay(
-                Image(systemName: "person.2.fill")
-                    .font(.title2)
-                    .foregroundStyle(
+        let pictureUrl = livePictureUrl
+        
+        return ZStack {
+            if pictureUrl.isEmpty || pictureUrl.contains("default.png") {
+                // Default avatar
+                Circle()
+                    .fill(
                         LinearGradient(
-                            colors: [Color(hex: "#73d2a3"), Color(hex: "#9d73d2")],
+                            colors: [Color("#73d2a3").opacity(0.3), Color("#9d73d2").opacity(0.3)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
-            )
-            .overlay(
-                Circle()
-                    .stroke(
-                        LinearGradient(
-                            colors: [Color(hex: "#73d2a3"), Color(hex: "#9d73d2")],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 2
+                    .frame(width: 56, height: 56)
+                    .overlay(
+                        Image(systemName: "person.2.fill")
+                            .font(.title2)
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [Color("#73d2a3"), Color("#9d73d2")],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
                     )
-            )
+            } else {
+                // Try to load the actual group image
+                AsyncImage(url: URL(string: pictureUrl)) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                            .frame(width: 56, height: 56)
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 56, height: 56)
+                            .clipShape(Circle())
+                    case .failure:
+                        // Fallback to default
+                        Circle()
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(width: 56, height: 56)
+                            .overlay(
+                                Image(systemName: "person.2.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.gray)
+                            )
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+            }
+        }
+        .overlay(
+            Circle()
+                .stroke(
+                    LinearGradient(
+                        colors: [Color("#73d2a3"), Color("#9d73d2")],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 2
+                )
+        )
     }
 }
 // ADD THIS: Animated typing dots view

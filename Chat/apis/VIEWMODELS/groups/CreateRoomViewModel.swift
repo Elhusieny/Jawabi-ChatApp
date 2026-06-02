@@ -43,7 +43,8 @@ class CreateRoomViewModel: ObservableObject {
         }
         print("👤 Selected users: \(selectedUsers.count)")
     }
-    
+    // CreateRoomViewModel.swift - Updated createRoom method
+
     func createRoom(name: String, description: String?, memberIds: [String], image: UIImage?) {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else {
             errorMessage = "Room name cannot be empty"
@@ -59,11 +60,13 @@ class CreateRoomViewModel: ObservableObject {
         errorMessage = nil
         successMessage = nil
         
-        // Convert UIImage to base64 string if provided
+        // Convert UIImage to base64 string if provided with better compression
         var chatPicture: String?
         if let image = image {
-            chatPicture = convertImageToBase64(image)
-            print("📸 Image converted to base64: \(chatPicture?.prefix(50) ?? "nil")...")
+            // Resize image to reasonable size before converting
+            let resizedImage = resizeImage(image, targetSize: CGSize(width: 500, height: 500))
+            chatPicture = convertImageToBase64(resizedImage)
+            print("📸 Image converted to base64, length: \(chatPicture?.count ?? 0)")
         }
         
         let request = CreateRoomRequest(
@@ -73,6 +76,7 @@ class CreateRoomViewModel: ObservableObject {
         )
         
         print("🎯 Creating room: \(name) with \(memberIds.count) members")
+        print("📸 Has image: \(chatPicture != nil)")
         
         groupRoomService.createRoom(request)
             .receive(on: DispatchQueue.main)
@@ -95,8 +99,10 @@ class CreateRoomViewModel: ObservableObject {
                     self?.selectedUsers.removeAll()
                     print("✅ Room created: \(successMsg)")
                     
-                    // You might want to refresh the rooms list here
-                    // NotificationCenter.default.post(name: .roomsDidUpdate, object: nil)
+                    // Post notification to refresh chat list
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        NotificationCenter.default.post(name: NSNotification.Name("ChatListShouldRefresh"), object: nil)
+                    }
                 } else {
                     let errorMsg = response.message ?? "Failed to create room"
                     self?.errorMessage = errorMsg
@@ -105,14 +111,39 @@ class CreateRoomViewModel: ObservableObject {
             }
             .store(in: &cancellables)
     }
-    
+
+    // Add this helper method to resize image
+    private func resizeImage(_ image: UIImage, targetSize: CGSize) -> UIImage {
+        let size = image.size
+        
+        let widthRatio  = targetSize.width  / size.width
+        let heightRatio = targetSize.height / size.height
+        
+        let newSize: CGSize
+        if widthRatio > heightRatio {
+            newSize = CGSize(width: size.width * heightRatio, height: size.height * heightRatio)
+        } else {
+            newSize = CGSize(width: size.width * widthRatio, height: size.height * widthRatio)
+        }
+        
+        let rect = CGRect(origin: .zero, size: newSize)
+        
+        UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+        image.draw(in: rect)
+        let newImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        
+        return newImage ?? image
+    }
+
     private func convertImageToBase64(_ image: UIImage) -> String? {
-        guard let imageData = image.jpegData(compressionQuality: 0.5) else {
+        // Use JPEG with 0.7 quality for better balance
+        guard let imageData = image.jpegData(compressionQuality: 0.7) else {
             print("❌ Failed to convert image to JPEG data")
             return nil
         }
         let base64String = imageData.base64EncodedString()
-        print("📸 Image converted to base64, length: \(base64String.count)")
+        print("📸 Image converted to base64, size: \(imageData.count / 1024) KB")
         return base64String
     }
     

@@ -9,27 +9,40 @@ protocol SignalRServiceProtocol: ObservableObject {
     var typingStatus: TypingStatus? { get }
     var userStatus: UserStatus? { get }
     var seenStatus: SeenStatus? { get }
-
+    
     func connect()
     func disconnect()
     func sendMessage(
-          _ message: String,
-          chatId: Int,
-          fileUrl: String?,
-          fileName: String?,
-          fileSize: Int64?,
-          fileExtension: String?,
-          type: MessageType?
-      )
+        _ message: String,
+        chatId: Int,
+        fileUrl: String?,
+        fileName: String?,
+        fileSize: Int64?,
+        fileExtension: String?,
+        type: MessageType?
+    )
     func joinChat(chatId: Int, completion: ((Bool) -> Void)?)
     func leaveChat(chatId: Int)
     func getMessages(chatId: Int)
     func deleteMessage(messageId: Int)
     func sendTypingIndicator(chatId: Int)
     func markAsRead(chatId: Int)
+    func sendGroupMessage(
+        _ message: String,
+        chatId: Int,
+        fileUrl: String?,
+        fileName: String?,
+        fileSize: Int64?,
+        fileExtension: String?,
+        type: MessageType?
+    )
 }
 
 class SignalRService: SignalRServiceProtocol, ObservableObject {
+  
+    
+   
+    
     @Published var lastSentChatId: Int?
     @Published var seenStatus: SeenStatus?
     
@@ -84,7 +97,11 @@ class SignalRService: SignalRServiceProtocol, ObservableObject {
             .withAutoReconnect()
             .build()
     }
-    
+    func leaveChat(chatId: Int) {
+        // Call the completion version and ignore the result
+        leaveChat(chatId: chatId) { _, _ in }
+    }
+
     private func refreshConnectionWithNewToken() {
         print("🔄 Refreshing SignalR connection with new token...")
         connection.stop()
@@ -118,6 +135,17 @@ class SignalRService: SignalRServiceProtocol, ObservableObject {
             print("📥 From: \(messageData.from ?? "nil")")
             print("📥 Text: \(messageData.text ?? "nil")")
             print("📥 ChatId from server: \(messageData.chatId ?? 0)")
+            
+            DispatchQueue.main.async {
+                self?.receivedMessage = messageData
+            }
+        }
+        // Add this after the ReceivePrivateMessage handler (around line 136)
+        connection.on(method: "ReceiveGroupMessage") { [weak self] (messageData: ReceivedPrivateMessage) in
+            print("📥 SignalR: GROUP message received")
+            print("📥 From: \(messageData.from ?? "nil")")
+            print("📥 Text: \(messageData.text ?? "nil")")
+            print("📥 ChatId: \(messageData.chatId ?? 0)")
             
             DispatchQueue.main.async {
                 self?.receivedMessage = messageData
@@ -338,7 +366,87 @@ class SignalRService: SignalRServiceProtocol, ObservableObject {
             }
         }
     }
-    
+    // MARK: - Send Group Message
+
+    func sendGroupMessage(
+        _ message: String,
+        chatId: Int,
+        fileUrl: String? = nil,
+        fileName: String? = nil,
+        fileSize: Int64? = nil,
+        fileExtension: String? = nil,
+        type: MessageType? = nil
+    ) {
+        guard connectionState == .connected else {
+            print("❌ Cannot send group message - SignalR not connected")
+            DispatchQueue.main.async { self.connectionError = "SignalR not connected" }
+            return
+        }
+        
+        guard chatId > 0 else {
+            print("❌ Cannot send group message - invalid chatId: \(chatId)")
+            DispatchQueue.main.async { self.connectionError = "Invalid chat ID" }
+            return
+        }
+        
+        lastSentChatId = chatId
+        
+        let finalType: MessageType
+        if let providedType = type {
+            finalType = providedType
+        } else {
+            finalType = resolveMessageType(message: message, fileUrl: fileUrl, fileExtension: fileExtension)
+        }
+        
+        let isVoiceMessage = finalType == .voice
+        if isVoiceMessage {
+            print("🎙️ Voice message detected — skipping file scan")
+        }
+        
+        let finalFileSize: Int64
+        if finalType == .text {
+            finalFileSize = 0
+        } else {
+            finalFileSize = fileSize ?? 0
+        }
+        
+        let finalFileName  = fileName      ?? ""
+        let finalExtension = fileExtension ?? ""
+        let finalFileUrl   = fileUrl       ?? ""
+        
+        print("📤 SignalR: Sending GROUP message to chat \(chatId)")
+        print("   - Type: \(finalType) (raw: \(finalType.rawValue))")
+        print("   - Message: \(message.prefix(50))")
+        print("   - FileName: \(finalFileName)")
+        print("   - FileSize: \(finalFileSize)")
+        print("   - Extension: \(finalExtension)")
+        print("   - Scanning: \(isVoiceMessage ? "SKIPPED (voice)" : "enabled")")
+        
+        if finalType != .text && !isVoiceMessage {
+            self.isFileScanning = true
+        }
+        
+        connection.invoke(
+            method: "SendGroupMessage",
+            message,
+            chatId,
+            finalFileUrl,
+            finalFileName,
+            finalFileSize,
+            finalExtension,
+            finalType.rawValue
+        ) { [weak self] error in
+            DispatchQueue.main.async {
+                self?.isFileScanning = false
+                if let error = error {
+                    print("❌ SignalR SendGroupMessage failed: \(error)")
+                    self?.connectionError = "Send failed: \(error.localizedDescription)"
+                } else {
+                    print("✅ SignalR SendGroupMessage successful")
+                }
+            }
+        }
+    }
     // MARK: - Message Type Resolution
     
     /// Resolves the correct MessageType from available metadata.
@@ -488,22 +596,30 @@ class SignalRService: SignalRServiceProtocol, ObservableObject {
         }
     }
     
-    func leaveChat(chatId: Int) {
+    // In SignalRService.swift - Update leaveChat method to support completion
+    func leaveChat(chatId: Int, completion: ((Bool, Error?) -> Void)? = nil) {
         guard connectionState == .connected else {
-            print("❌ Cannot leave chat - SignalR not connected"); return
+            print("❌ Cannot leave chat - SignalR not connected")
+            completion?(false, NSError(domain: "SignalR", code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "SignalR not connected"]))
+            return
         }
-        connection.invoke(method: "LeaveRoom", chatId) { [weak self] error in
-            if let error = error {
-                print("❌ SignalR LeaveRoom failed: \(error)")
-                DispatchQueue.main.async {
-                    self?.connectionError = "LeaveRoom failed: \(error.localizedDescription)"
+        
+        print("🚪 SignalR: Leaving room \(chatId)")
+        
+        connection.invoke(method: "LeaveRoom", chatId) { error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("❌ SignalR LeaveRoom failed: \(error)")
+                    self.connectionError = "LeaveRoom failed: \(error.localizedDescription)"
+                    completion?(false, error)
+                } else {
+                    print("✅ SignalR LeaveRoom successful for chat \(chatId)")
+                    completion?(true, nil)
                 }
-            } else {
-                print("✅ SignalR LeaveRoom successful")
             }
         }
     }
-    
     func getMessages(chatId: Int) {
         guard connectionState == .connected else {
             print("❌ Cannot get messages - SignalR not connected"); return

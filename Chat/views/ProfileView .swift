@@ -561,38 +561,38 @@ struct ActionButtonsSection: View {
     
     var body: some View {
         VStack(spacing: 12) {
-            // NEW: Switch Account Button (only show if there are saved accounts)
-            if authViewModel.savedAccounts.count > 1 {
-                Button {
-                    showingAccountSwitcher = true
-                } label: {
-                    HStack {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .foregroundStyle(.white)
-                        
-                        Text("Switch Account")
-                            .foregroundStyle(.white)
-                            .fontWeight(.medium)
-                        
-                        Spacer()
-                        
+            // Replace the `if authViewModel.savedAccounts.count > 1` check:
+            Button {
+                showingAccountSwitcher = true
+            } label: {
+                HStack {
+                    Image(systemName: "person.badge.plus")
+                        .foregroundStyle(.white)
+                    
+                    Text(authViewModel.savedAccounts.count > 1 ? "Switch / Add Account" : "Add Account")
+                        .foregroundStyle(.white)
+                        .fontWeight(.medium)
+                    
+                    Spacer()
+                    
+                    if authViewModel.savedAccounts.count > 1 {
                         Text("\(authViewModel.savedAccounts.count) accounts")
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.8))
                     }
-                    .padding()
-                    .background(
-                        LinearGradient(
-                            colors: switchGradient,
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .cornerRadius(10)
-                    .shadow(color: Color(hex: "#739dd2").opacity(0.2), radius: 4, x: 0, y: 2)
                 }
+                .padding()
+                .background(
+                    LinearGradient(
+                        colors: switchGradient,
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .cornerRadius(10)
+                .shadow(color: Color(hex: "#739dd2").opacity(0.2), radius: 4, x: 0, y: 2)
             }
-            
+    
             // Existing Log Out button
             Button {
                 showingLogoutConfirmation = true

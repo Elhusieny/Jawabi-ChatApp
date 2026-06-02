@@ -7,6 +7,8 @@ struct LoginView: View {
     @State private var isPasswordVisible = false
     @State private var gradientAnimation = false
     @State private var showingSavedAccounts = false
+    @Environment(\.dismiss) private var dismiss
+    @State private var isAuthenticating = false
 
     // Define the main color as static computed properties - SAME AS ProfileView
     private var primaryColor: Color { Color(hex: "#7373d2") }
@@ -295,6 +297,16 @@ struct LoginView: View {
                     Spacer()
                 }
             }
+            // Your existing view code
+                   .onChange(of: authViewModel.isAuthenticated) { isAuthenticated in
+                       if isAuthenticated && isAuthenticating {
+                           dismiss()
+                       }
+                   }
+                   .onChange(of: authViewModel.isLoading) { isLoading in
+                       isAuthenticating = isLoading
+                   }
+            
             .navigationBarHidden(true)
             .onAppear {
                            // Load saved accounts when view appears

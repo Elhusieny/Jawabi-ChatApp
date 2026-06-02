@@ -333,9 +333,7 @@ struct UserRow: View {
                             .fill(user.isDefaultImage ? Color.red : Color.green)
                             .frame(width: 6, height: 6)
                         
-                        Text(debugText)
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(user.isDefaultImage ? .red : .green)
+                       
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)

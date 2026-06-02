@@ -8,11 +8,15 @@
 
 import Combine
 import Foundation
+import UIKit
 
 // MARK: - Group Room Service Protocol
 protocol GroupRoomServiceProtocol {
     func createRoom(_ request: CreateRoomRequest) -> AnyPublisher<CreateRoomResponse, Error>
 }
+
+// GroupRoomService.swift - Updated version
+
 
 // MARK: - Group Room Service
 class GroupRoomService: GroupRoomServiceProtocol {
@@ -42,10 +46,10 @@ class GroupRoomService: GroupRoomServiceProtocol {
         let httpBody = createMultipartFormData(boundary: boundary, request: request)
         urlRequest.httpBody = httpBody
         
-        // Print request details for debugging
         print("🚀 Creating room with name: \(request.name)")
         print("👥 Members: \(request.memberIds)")
         print("📸 Has image: \(request.chatPicture != nil)")
+        print("📸 Image length: \(request.chatPicture?.count ?? 0)")
         
         return URLSession.shared.dataTaskPublisher(for: urlRequest)
             .tryMap { data, response in
@@ -88,23 +92,32 @@ class GroupRoomService: GroupRoomServiceProtocol {
         body.append("Content-Disposition: form-data; name=\"Name\"\r\n\r\n")
         body.append("\(request.name)\r\n")
         
-        // Add ChatPicture field if provided
-        if let chatPicture = request.chatPicture {
-            body.append("--\(boundary)\r\n")
-            body.append("Content-Disposition: form-data; name=\"chatPicture\"\r\n\r\n")
-            body.append("\(chatPicture)\r\n")
+        // Add ChatPicture as a file upload, not as a string field
+        if let chatPictureBase64 = request.chatPicture, !chatPictureBase64.isEmpty {
+            // Convert base64 back to image data
+            if let imageData = Data(base64Encoded: chatPictureBase64) {
+                body.append("--\(boundary)\r\n")
+                body.append("Content-Disposition: form-data; name=\"ChatPicture\"; filename=\"group_avatar.jpg\"\r\n")
+                body.append("Content-Type: image/jpeg\r\n\r\n")
+                body.append(imageData)
+                body.append("\r\n")
+                print("📸 Added image file to multipart form data, size: \(imageData.count) bytes")
+            } else {
+                print("❌ Failed to convert base64 to image data")
+            }
         }
         
         // Add MemberIds array
         for memberId in request.memberIds {
             body.append("--\(boundary)\r\n")
-            body.append("Content-Disposition: form-data; name=\"memberIds\"\r\n\r\n")
+            body.append("Content-Disposition: form-data; name=\"MemberIds\"\r\n\r\n")
             body.append("\(memberId)\r\n")
         }
         
         // Close the form data
         body.append("--\(boundary)--\r\n")
         
+        print("📦 Total multipart body size: \(body.count) bytes")
         return body
     }
 }

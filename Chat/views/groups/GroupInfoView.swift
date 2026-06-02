@@ -1,26 +1,11 @@
-//
-//  GroupInfoView.swift
-//  Chat
-//
-//  Created by Ahmed Elhussieny on 12/05/2026.
-//
-
-
-//
-//  GroupInfoView.swift
-//  Chat
-//
-//  Created by Your Name on 12/05/2026.
-//
-
+// GroupInfoView.swift
 import SwiftUI
 
 struct GroupInfoView: View {
-    @Environment(\.dismiss) var dismiss
     @ObservedObject var chatViewModel: ChatViewModel
     let chat: Chat
-    
-    @State private var showingAddMembers = false
+    @Environment(\.dismiss) var dismiss
+    @State private var showingMemberList = false
     @State private var members: [GroupMemberInfo] = []
     @State private var isLoading = false
     
@@ -32,52 +17,64 @@ struct GroupInfoView: View {
         List {
             // Group Header
             Section {
-                VStack(spacing: 12) {
-                    // Group Avatar
-                    if chat.pictureUrl.isEmpty == false && !(chat.pictureUrl.contains("default.png") ?? true) {
-                        AsyncImage(url: URL(string: chat.fullPictureUrl)) { image in
-                            image.resizable()
-                                .scaledToFill()
-                        } placeholder: {
-                            ProgressView()
-                        }
-                        .frame(width: 100, height: 100)
-                        .clipShape(Circle())
-                    } else {
-                        Circle()
-                            .fill(Color.blue.opacity(0.2))
-                            .frame(width: 100, height: 100)
-                            .overlay(
+                HStack {
+                    Spacer()
+                    VStack(spacing: 12) {
+                        // Group Avatar
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [.blue.opacity(0.2), .purple.opacity(0.2)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 80, height: 80)
+                            
+                            if chat.pictureUrl.isEmpty == false && !(chat.pictureUrl.contains("default.png") ?? true) {
+                                AsyncImage(url: URL(string: chat.fullPictureUrl)) { phase in
+                                    if let image = phase.image {
+                                        image
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: 80, height: 80)
+                                            .clipShape(Circle())
+                                    } else {
+                                        Image(systemName: "person.2.fill")
+                                            .font(.system(size: 40))
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                            } else {
                                 Image(systemName: "person.2.fill")
                                     .font(.system(size: 40))
-                                    .foregroundColor(.blue)
-                            )
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        
+                        Text(chat.name)
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                        
+                        Text("\(chat.users.count) members")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
                     }
-                    
-                    Text(chat.name)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    
-                    Text("\(chat.users.count) members")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    Spacer()
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical)
-                .listRowBackground(Color.clear)
+                .padding(.vertical, 12)
             }
+            .listRowBackground(Color.clear)
             
             // Admin Actions (only for admins)
             if chat.isCurrentUserAdmin {
                 Section("Group Actions") {
                     Button(action: {
-                        showingAddMembers = true
+                        showingMemberList = true
                     }) {
                         HStack {
-                            Image(systemName: "person.badge.plus")
-                                .foregroundColor(.blue)
-                            Text("Add Members")
-                                .foregroundColor(.primary)
+                            Label("Manage Members", systemImage: "person.badge.plus")
                             Spacer()
                             Image(systemName: "chevron.right")
                                 .font(.caption)
@@ -109,27 +106,43 @@ struct GroupInfoView: View {
                 }
             }
             
-            // Leave Group
+            // Media, Files, etc. (Optional)
             Section {
-                Button(action: {
-                    leaveGroup()
-                }) {
-                    HStack {
-                        Spacer()
-                        Text("Leave Group")
-                            .foregroundColor(.red)
-                        Spacer()
-                    }
+                Button {
+                    // Show shared media
+                } label: {
+                    Label("Shared Media", systemImage: "photo.on.rectangle")
                 }
+                
+                Button {
+                    // Show shared files
+                } label: {
+                    Label("Shared Files", systemImage: "doc")
+                }
+            }
+            
+            // Leave Group Button
+            Section {
+                LeaveChatButton(
+                    chatId: chat.id,
+                    chatName: chat.name,
+                    chatType: chat.type,
+                    chatViewModel: chatViewModel
+                )
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
             }
         }
         .navigationTitle("Group Info")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showingAddMembers) {
-            AddMembersView(
-                chatId: chat.id,
-                chatName: chat.name,
-                existingMembers: members.map { $0.id }
+        .sheet(isPresented: $showingMemberList) {
+            EnhancedMemberListView(
+                chat: chat,
+                chatViewModel: chatViewModel,
+                onMembersUpdated: {
+                    loadMembers()
+                    refreshGroupInfo()
+                }
             )
         }
         .onAppear {
@@ -175,26 +188,122 @@ struct GroupInfoView: View {
     private func makeAdmin(_ member: GroupMemberInfo) {
         // Implement make admin API call
         print("Making \(member.name) admin")
+        // TODO: Call API to make user admin
+        // After API call success, refresh group info
+        refreshGroupInfo()
     }
     
     private func removeAdmin(_ member: GroupMemberInfo) {
         // Implement remove admin API call
         print("Removing admin from \(member.name)")
+        // TODO: Call API to remove admin
+        // After API call success, refresh group info
+        refreshGroupInfo()
     }
     
     private func removeMember(_ member: GroupMemberInfo) {
         // Implement remove member API call
         print("Removing member \(member.name)")
-    }
-    
-    private func leaveGroup() {
-        // Implement leave group API call
-        print("Leaving group: \(chat.name)")
-        dismiss()
+        // TODO: Call API to remove member
+        // After API call success, refresh group info
+        refreshGroupInfo()
     }
     
     private func refreshGroupInfo() {
         chatViewModel.loadChat(chatId: chat.id)
+    }
+}
+
+// MARK: - Enhanced Member List View
+struct EnhancedMemberListView: View {
+    let chat: Chat
+    @ObservedObject var chatViewModel: ChatViewModel
+    let onMembersUpdated: () -> Void
+    @Environment(\.dismiss) var dismiss
+    @State private var searchText = ""
+    @State private var members: [GroupMemberInfo] = []
+    @State private var isLoading = false
+    
+    private var currentUserId: String {
+        UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+    }
+    
+    var filteredMembers: [GroupMemberInfo] {
+        if searchText.isEmpty {
+            return members
+        } else {
+            return members.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        }
+    }
+    
+    var body: some View {
+        NavigationView {
+            List(filteredMembers) { member in
+                MemberInfoRow(
+                    member: member,
+                    isCurrentUser: member.id == currentUserId,
+                    isCurrentUserAdmin: chat.isCurrentUserAdmin,
+                    onMakeAdmin: { makeAdmin(member) },
+                    onRemoveAdmin: { removeAdmin(member) },
+                    onRemoveMember: { removeMember(member) }
+                )
+            }
+            .searchable(text: $searchText, prompt: "Search members")
+            .navigationTitle("Members (\(members.count))")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                loadMembers()
+            }
+        }
+    }
+    
+    private func loadMembers() {
+        isLoading = true
+        members = chat.users.map { user in
+            GroupMemberInfo(
+                id: user.userId,
+                name: getUserName(from: user.userId),
+                role: user.role,
+                isOnline: chatViewModel.userStatuses[user.userId] ?? false
+            )
+        }
+        .sorted { $0.role < $1.role }
+        isLoading = false
+    }
+    
+    private func getUserName(from userId: String) -> String {
+        if let user = chatViewModel.users.first(where: { $0.id == userId }) {
+            return user.name
+        }
+        if userId == currentUserId {
+            return "You"
+        }
+        return String(userId.prefix(8))
+    }
+    
+    private func makeAdmin(_ member: GroupMemberInfo) {
+        print("Making \(member.name) admin")
+        onMembersUpdated()
+        loadMembers()
+    }
+    
+    private func removeAdmin(_ member: GroupMemberInfo) {
+        print("Removing admin from \(member.name)")
+        onMembersUpdated()
+        loadMembers()
+    }
+    
+    private func removeMember(_ member: GroupMemberInfo) {
+        print("Removing member \(member.name)")
+        onMembersUpdated()
+        loadMembers()
     }
 }
 

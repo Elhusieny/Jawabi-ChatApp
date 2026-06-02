@@ -94,322 +94,157 @@ struct ChatDetailView: View {
 
     
     var body: some View {
-           VStack(spacing: 0) {
-               // Chat messages area
-               ZStack {
-                   LinearGradient(
+        VStack(spacing: 0) {
+            // Chat messages area
+            ZStack {
+                LinearGradient(
                     colors: gradientAnimation ? gradientColors1 : gradientColors2,
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
-                   )
-                   .ignoresSafeArea()
-                   
-                   ScrollViewReader { proxy in
-                       ScrollView {
-                           LazyVStack(spacing: 4) {
-                               // Messages are now in ascending order (oldest to newest)
-                               ForEach(messages) { message in
-                                   UniversalMessageBubble(
+                )
+                .ignoresSafeArea()
+                
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 4) {
+                            // Messages are now in ascending order (oldest to newest)
+                            ForEach(messages) { message in
+                                UniversalMessageBubble(
                                     message: message,
                                     isCurrentUser: isCurrentUser(message: message),
                                     gradientAnimation: gradientAnimation,
                                     chatViewModel: chatViewModel,
                                     chatId: chat.id
-                                   )
-                                   .id(String(describing: message.id))
-                               }
-                               
-                               if let typingUser = typingUser {
-                                   TypingIndicatorBubble(
+                                )
+                                .id(String(describing: message.id))
+                            }
+                            
+                            if let typingUser = typingUser {
+                                TypingIndicatorBubble(
                                     userName: typingUser,
                                     gradientAnimation: gradientAnimation
-                                   )
-                                   .id("typing-indicator")
-                               }
-                           }
-                           .padding(.horizontal, 8)
-                           .padding(.vertical, 8)
-                       }
-                      
-                       .onAppear {
-                           scrollProxy = proxy
-                           scrollToBottom()
-                           chatViewModel.startPollingForChat(chatId: chat.id)
-                       }
-                       .onChange(of: messages.count) { _ in
-                           scrollToBottom()
-                       }
-                       .onChange(of: typingUser) { _ in
-                           DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                               scrollToBottom()
-                           }
-                       }
-                       .onChange(of: messages.map { $0.id }) { _ in
-                           scrollToBottom()
-                       }
-                       // Add to your view to monitor uploads
-                       .onReceive(chatViewModel.$fileStatusUpdates) { updates in
-                           print("📡 File status updates: \(updates.count)")
-                           for (messageId, data) in updates {
-                               print("   - Message \(messageId): \(data.fileUrl) - \(data.isSafe ? "Safe" : "Blocked")")
-                           }
-                       }
-                   }
-               }
-                            HStack(alignment: .bottom, spacing: 8) {
-                              // File picker menu
-                              Menu {
-                                  Button(action: {
-                                      showingImagePicker = true
-                                  }) {
-                                      Label("Photo Library", systemImage: "photo")
-                                  }
-                                  
-                                  Button(action: {
-                                      showDocumentPicker()
-                                  }) {
-                                      Label("Document", systemImage: "doc")
-                                  }
-                                  
-                                  Button(action: {
-                                      // For camera, you would need a separate image picker with .camera source
-                                      showingImagePicker = true
-                                  }) {
-                                      Label("Camera", systemImage: "camera")
-                                  }
-                              } label: {
-                                  Image(systemName: "plus.circle.fill")
-                                      .font(.title2)
-                                      .foregroundStyle(
-                                          LinearGradient(
-                                              colors: iconGradientColors,
-                                              startPoint: gradientAnimation ? .top : .leading,
-                                              endPoint: gradientAnimation ? .bottom : .trailing
-                                          )
-                                      )
-                                      .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: gradientAnimation)
-                              }
-                              
-                              // Message text field
-                              HStack {
-                                  TextField("Message", text: $messageText, axis: .vertical)
-                                      .focused($isMessageFieldFocused)
-                                      .textFieldStyle(PlainTextFieldStyle())
-                                      .padding(.horizontal, 12)
-                                      .padding(.vertical, 8)
-                                      .background(Color(.systemBackground))
-                                      .cornerRadius(20)
-                                      .onChange(of: messageText) { newValue in
-                                          if !newValue.isEmpty {
-                                              chatViewModel.sendTypingIndicator(for: chat.id)
-                                          }
-                                      }
-                              }
-                              .background(Color(.systemBackground))
-                              .cornerRadius(20)
-                              .overlay(
-                                  RoundedRectangle(cornerRadius: 20)
-                                      .stroke(
-                                          LinearGradient(
-                                              colors: [.blue.opacity(0.3), .purple.opacity(0.3)],
-                                              startPoint: .leading,
-                                              endPoint: .trailing
-                                          ),
-                                          lineWidth: 1
-                                      )
-                              )
-                              
-
-                                // RIGHT: voice button and send button with WhatsApp-style recording
-                                if messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                    && selectedFileURL == nil
-                                    && !isRecordingVoice {
-                                    
-                                    // Voice button to start recording
-                                    Button(action: {
-                                        voiceRecorder.requestPermission { granted in
-                                            guard granted else { return }
-                                            do {
-                                                try voiceRecorder.startRecording()
-                                                withAnimation(.spring(response: 0.3)) {
-                                                    isRecordingVoice = true
-                                                }
-                                            } catch {
-                                                print("❌ Failed to start recording: \(error)")
-                                            }
-                                        }
-                                    }) {
-                                        Image(systemName: "mic.circle.fill")
-                                            .font(.title2)
-                                            .foregroundStyle(
-                                                LinearGradient(
-                                                    colors: [.blue, .purple],
-                                                    startPoint: .leading,
-                                                    endPoint: .trailing
-                                                )
-                                            )
-                                    }
-                                    
-                                } else if isRecordingVoice {
-                                    // Show WhatsApp-style compact recording controls
-                                    CompactRecordingView(
-                                        recorder: voiceRecorder,
-                                        onSend: { url in
-                                            if let data = try? Data(contentsOf: url) {
-                                                uploadFileWithSignalR(data: data, fileName: url.lastPathComponent)
-                                            }
-                                            withAnimation(.spring(response: 0.3)) {
-                                                isRecordingVoice = false
-                                            }
-                                        },
-                                        onCancel: {
-                                            voiceRecorder.cancelRecording()
-                                            withAnimation(.spring(response: 0.3)) {
-                                                isRecordingVoice = false
-                                            }
-                                        }
-                                    )
-                                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                                    
-                                } else {
-                                    // Send button
-                                    Button {
-                                        if let fileURL = selectedFileURL, let data = fileData {
-                                            sendFileMessage(data: data, fileName: fileName)
-                                        } else {
-                                            sendMessage()
-                                        }
-                                    } label: {
-                                        if isUploadingFile {
-                                            ProgressView()
-                                                .scaleEffect(0.8)
-                                                .frame(width: 24, height: 24)
-                                        } else {
-                                            Image(systemName: "arrow.up.circle.fill")
-                                                .font(.title2)
-                                                .foregroundStyle(
-                                                    LinearGradient(
-                                                        colors: [.blue, .purple],
-                                                        startPoint: .leading,
-                                                        endPoint: .trailing
-                                                    )
-                                                )
-                                        }
-                                    }
-                                    .disabled(
-                                        messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                        && selectedFileURL == nil
-                                    )
-                                }
-                                }
-                          .padding(.horizontal, 12)
-                          .padding(.vertical, 8)
-                          .background(
-                              LinearGradient(
-                                  colors: [Color(.systemGray6).opacity(0.9), Color(.systemGray6).opacity(0.7)],
-                                  startPoint: .top,
-                                  endPoint: .bottom
-                              )
-                          )
-                      }
-        // In ChatDetailView.swift, add to toolbar
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if chat.type == 0 { // Group chat
-                    Menu {
-                        Button(action: {
-                            // Navigate to group info
-                            showingGroupInfo = true
-                        }) {
-                            Label("Group Info", systemImage: "info.circle")
-                        }
-                        
-                        if chat.isCurrentUserAdmin {
-                            Button(action: {
-                                showingAddMembers = true
-                            }) {
-                                Label("Add Members", systemImage: "person.badge.plus")
+                                )
+                                .id("typing-indicator")
                             }
                         }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 8)
+                    }
+                    
+                    .onAppear {
+                        scrollProxy = proxy
+                        scrollToBottom()
+                        chatViewModel.startPollingForChat(chatId: chat.id)
+                    }
+                    .onChange(of: messages.count) { _ in
+                        scrollToBottom()
+                    }
+                    .onChange(of: typingUser) { _ in
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            scrollToBottom()
+                        }
+                    }
+                    .onChange(of: messages.map { $0.id }) { _ in
+                        scrollToBottom()
+                    }
+                    // Add to your view to monitor uploads
+                    .onReceive(chatViewModel.$fileStatusUpdates) { updates in
+                        print("📡 File status updates: \(updates.count)")
+                        for (messageId, data) in updates {
+                            print("   - Message \(messageId): \(data.fileUrl) - \(data.isSafe ? "Safe" : "Blocked")")
+                        }
                     }
                 }
             }
-        }
-        .sheet(isPresented: $showingGroupInfo) {
-            NavigationView {
-                GroupInfoView(
-                    chatViewModel: chatViewModel,
-                    chat: chat
-                )
-            }
-        }
-        .sheet(isPresented: $showingAddMembers) {
-            AddMembersView(
-                chatId: chat.id,
-                chatName: chat.name,
-                existingMembers: chat.users.map { $0.userId }
-            )
-        }
-                      .navigationBarTitleDisplayMode(.inline)
-                      .navigationBarBackButtonHidden(false)
-        // In ChatDetailView, update the navigation title:
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                HStack(spacing: 8) {
-                    // User/chat image
-                    if let liveChat = currentLiveChat {
-                        AsyncImage(url: URL(string: liveChat.fullPictureUrl)) { phase in
-                            switch phase {
-                            case .empty:
-                                Circle()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [.blue.opacity(0.2), .purple.opacity(0.2)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                                    .frame(width: 30, height: 30)
-                                    .overlay(
-                                        Text(liveChat.name.getInitials())
-                                            .font(.system(size: 12, weight: .bold))
-                                            .foregroundColor(.white)
-                                    )
-                                
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 30, height: 30)
-                                    .clipShape(Circle())
-                                
-                            case .failure:
-                                Circle()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [.blue.opacity(0.2), .purple.opacity(0.2)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                                    .frame(width: 30, height: 30)
-                                    .overlay(
-                                        Text(liveChat.name.getInitials())
-                                            .font(.system(size: 12, weight: .bold))
-                                            .foregroundColor(.white)
-                                    )
-                                
-                            @unknown default:
-                                EmptyView()
+            // Replace the entire HStack input bar section (around line 200-300) with this:
+            
+            HStack(alignment: .bottom, spacing: 8) {
+                // Only show file picker menu when NOT recording voice
+                if !isRecordingVoice {
+                    Menu {
+                        Button(action: {
+                            showingImagePicker = true
+                        }) {
+                            Label("Photo Library", systemImage: "photo")
+                        }
+                        
+                        Button(action: {
+                            showDocumentPicker()
+                        }) {
+                            Label("Document", systemImage: "doc")
+                        }
+                        
+                        Button(action: {
+                            showingImagePicker = true
+                        }) {
+                            Label("Camera", systemImage: "camera")
+                        }
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: iconGradientColors,
+                                    startPoint: gradientAnimation ? .top : .leading,
+                                    endPoint: gradientAnimation ? .bottom : .trailing
+                                )
+                            )
+                            .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: gradientAnimation)
+                    }
+                }
+                
+                // Message text field - HIDE when recording voice
+                if !isRecordingVoice {
+                    HStack {
+                        TextField("Message", text: $messageText, axis: .vertical)
+                            .focused($isMessageFieldFocused)
+                            .textFieldStyle(PlainTextFieldStyle())
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color(.systemBackground))
+                            .cornerRadius(20)
+                            .onChange(of: messageText) { newValue in
+                                if !newValue.isEmpty {
+                                    chatViewModel.sendTypingIndicator(for: chat.id)
+                                }
+                            }
+                    }
+                    .background(Color(.systemBackground))
+                    .cornerRadius(20)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [.blue.opacity(0.3), .purple.opacity(0.3)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ),
+                                lineWidth: 1
+                            )
+                    )
+                }
+                
+                // RIGHT: voice button and send button
+                if messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && selectedFileURL == nil
+                    && !isRecordingVoice {
+                    
+                    // Voice button to start recording
+                    Button(action: {
+                        voiceRecorder.requestPermission { granted in
+                            guard granted else { return }
+                            do {
+                                try voiceRecorder.startRecording()
+                                withAnimation(.spring(response: 0.3)) {
+                                    isRecordingVoice = true
+                                }
+                            } catch {
+                                print("❌ Failed to start recording: \(error)")
                             }
                         }
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(currentLiveChat?.name ?? chat.name)
-                            .font(.headline)
+                    }) {
+                        Image(systemName: "mic.circle.fill")
+                            .font(.title2)
                             .foregroundStyle(
                                 LinearGradient(
                                     colors: [.blue, .purple],
@@ -417,10 +252,45 @@ struct ChatDetailView: View {
                                     endPoint: .trailing
                                 )
                             )
-                        
-                        if let typingUser = typingUser {
-                            Text("typing...")
-                                .font(.caption)
+                    }
+                    
+                } else if isRecordingVoice {
+                    // Show recording controls - this replaces the entire input area
+                    RecordingControlsView(
+                        recorder: voiceRecorder,
+                        onSend: { url in
+                            if let data = try? Data(contentsOf: url) {
+                                uploadFileWithSignalR(data: data, fileName: url.lastPathComponent)
+                            }
+                            withAnimation(.spring(response: 0.3)) {
+                                isRecordingVoice = false
+                            }
+                        },
+                        onCancel: {
+                            voiceRecorder.cancelRecording()
+                            withAnimation(.spring(response: 0.3)) {
+                                isRecordingVoice = false
+                            }
+                        }
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    
+                } else {
+                    // Send button
+                    Button {
+                        if let fileURL = selectedFileURL, let data = fileData {
+                            sendFileMessage(data: data, fileName: fileName)
+                        } else {
+                            sendMessage()
+                        }
+                    } label: {
+                        if isUploadingFile {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                                .frame(width: 24, height: 24)
+                        } else {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.title2)
                                 .foregroundStyle(
                                     LinearGradient(
                                         colors: [.blue, .purple],
@@ -428,25 +298,168 @@ struct ChatDetailView: View {
                                         endPoint: .trailing
                                     )
                                 )
-                        } else if currentLiveChat?.isOnline == true || chat.isOnline {
-                            Text("online")
-                                .font(.caption)
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [.green, .blue],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                        } else {
-                            Text("offline")
-                                .font(.caption)
-                                .foregroundColor(.gray)
+                        }
+                    }
+                    .disabled(
+                        messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        && selectedFileURL == nil
+                    )
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                LinearGradient(
+                    colors: [Color(.systemGray6).opacity(0.9), Color(.systemGray6).opacity(0.7)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            
+
+           
+            // In ChatDetailView.swift, add to toolbar
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if chat.type == 0 { // Group chat
+                        Menu {
+                            Button(action: {
+                                // Navigate to group info
+                                showingGroupInfo = true
+                            }) {
+                                Label("Group Info", systemImage: "info.circle")
+                            }
+                            Divider()
+                            Button(role: .destructive) {
+                                showLeaveConfirmation()
+                            } label: {
+                                Label("Leave Group", systemImage: "rectangle.portrait.and.arrow.right")
+                            }
+                       
+                            
+                            
+                            if chat.isCurrentUserAdmin {
+                                Button(action: {
+                                    showingAddMembers = true
+                                }) {
+                                    Label("Add Members", systemImage: "person.badge.plus")
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
                         }
                     }
                 }
             }
-        }
+            .sheet(isPresented: $showingGroupInfo) {
+                NavigationView {
+                    GroupInfoView(
+                        chatViewModel: chatViewModel,
+                        chat: chat
+                    )
+                }
+            }
+            .sheet(isPresented: $showingAddMembers) {
+                AddMembersView(
+                    chatId: chat.id,
+                    chatName: chat.name,
+                    existingMembers: chat.users.map { $0.userId }
+                )
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(false)
+            // In ChatDetailView, update the navigation title:
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 8) {
+                        // User/chat image
+                        if let liveChat = currentLiveChat {
+                            AsyncImage(url: URL(string: liveChat.fullPictureUrl)) { phase in
+                                switch phase {
+                                case .empty:
+                                    Circle()
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [.blue.opacity(0.2), .purple.opacity(0.2)],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                        .frame(width: 30, height: 30)
+                                        .overlay(
+                                            Text(liveChat.name.getInitials())
+                                                .font(.system(size: 12, weight: .bold))
+                                                .foregroundColor(.white)
+                                        )
+                                    
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 30, height: 30)
+                                        .clipShape(Circle())
+                                    
+                                case .failure:
+                                    Circle()
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [.blue.opacity(0.2), .purple.opacity(0.2)],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                        .frame(width: 30, height: 30)
+                                        .overlay(
+                                            Text(liveChat.name.getInitials())
+                                                .font(.system(size: 12, weight: .bold))
+                                                .foregroundColor(.white)
+                                        )
+                                    
+                                @unknown default:
+                                    EmptyView()
+                                }
+                            }
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(currentLiveChat?.name ?? chat.name)
+                                .font(.headline)
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [.blue, .purple],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                            
+                            if let typingUser = typingUser {
+                                Text("typing...")
+                                    .font(.caption)
+                                    .foregroundStyle(
+                                        LinearGradient(
+                                            colors: [.blue, .purple],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                            } else if currentLiveChat?.isOnline == true || chat.isOnline {
+                                Text("online")
+                                    .font(.caption)
+                                    .foregroundStyle(
+                                        LinearGradient(
+                                            colors: [.green, .blue],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                            } else {
+                                Text("offline")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                    }
+                }}}
                       .onAppear {
                           chatViewModel.loadChat(chatId: chat.id)
                           DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -516,215 +529,267 @@ struct ChatDetailView: View {
                       }
                   }
                   
-              
+    // Add this function to ChatDetailView
+    private func showLeaveConfirmation() {
+        let alert = UIAlertController(
+            title: "Leave Group",
+            message: "Are you sure you want to leave \"\(chat.name)\"? You won't receive messages from this group anymore.",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Leave", style: .destructive) { _ in
+            chatViewModel.leaveChat(chatId: chat.id) { success in
+                if success {
+                    // Navigate back to chat list
+                    presentationMode.wrappedValue.dismiss()
+                    
+                    // Show success message
+                    let successAlert = UIAlertController(
+                        title: "Left Group",
+                        message: "You have successfully left \"\(chat.name)\"",
+                        preferredStyle: .alert
+                    )
+                    successAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                    
+                    if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                       let root = scene.windows.first?.rootViewController {
+                        root.present(successAlert, animated: true)
+                    }
+                } else {
+                    // Show error message
+                    let errorAlert = UIAlertController(
+                        title: "Error",
+                        message: chatViewModel.errorMessage ?? "Failed to leave group. Please try again.",
+                        preferredStyle: .alert
+                    )
+                    errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                    
+                    if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                       let root = scene.windows.first?.rootViewController {
+                        root.present(errorAlert, animated: true)
+                    }
+                }
+            }
+        })
+        
+        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let root = scene.windows.first?.rootViewController {
+            root.present(alert, animated: true)
+        }
+    }
     private func uploadFileWithSignalR(data: Data, fileName: String) {
-            let currentChatId = self.chat.id
-            isUploadingFile = true
-
-            // Temporary placeholder — shown while uploading
-            let tempMessageId = -Int.random(in: 1000000...9999999)
-            let tempMessage = Message(
-                id: tempMessageId,
-                            displayText: "SCANNING:\(fileName)",
-                name: chatViewModel.getCurrentUsername(),
-                timestamp: ISO8601DateFormatter().string(from: Date()),
-                isRead: false
-            )
-            addTemporaryMessage(tempMessage, chatId: currentChatId)
-
-            guard let signalR = chatViewModel.signalRService as? SignalRService else {
-                handleUploadError(tempMessageId: tempMessageId, chatId: currentChatId,
-                                  error: NSError(domain: "SignalR", code: -1,
-                                                userInfo: [NSLocalizedDescriptionKey: "SignalR not available"]))
-                return
-            }
-
-            print("🔍 Starting file upload and scan")
-
-            let capturedChatId      = currentChatId
-            let capturedTempMessageId = tempMessageId
-
-            guard let token = UserDefaults.standard.string(forKey: "authToken") else {
-                handleUploadError(tempMessageId: tempMessageId, chatId: currentChatId,
-                                  error: NSError(domain: "Auth", code: 401,
-                                                userInfo: [NSLocalizedDescriptionKey: "No authentication token"]))
-                return
-            }
-
-            let baseUrl   = "http://158.220.90.131:8444"
-            let uploadUrl = "\(baseUrl)/api/Chat/upload"
-            print("📤 Uploading to: \(uploadUrl)")
-
-            var request = URLRequest(url: URL(string: uploadUrl)!)
-            request.httpMethod = "POST"
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-
-            let boundary = UUID().uuidString
-            request.setValue("multipart/form-data; boundary=\(boundary)",
-                             forHTTPHeaderField: "Content-Type")
-
-            var body = Data()
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
-            let mimeType = getMimeType(for: fileName)
-            body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
-            body.append(data)
-            body.append("\r\n".data(using: .utf8)!)
-            body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-            request.httpBody = body
-
-            // Show UPLOADING status while the HTTP request is in flight
-            updateTemporaryMessageToUploading(capturedTempMessageId,
-                                              chatId: capturedChatId,
-                                              fileName: fileName)
-
-            URLSession.shared.dataTask(with: request) { data, response, error in
-                DispatchQueue.main.async {
-
-                    // ── Network error ────────────────────────────────────────────
-                    if let error = error {
-                        print("❌ HTTP upload failed: \(error)")
-                        self.handleUploadError(tempMessageId: capturedTempMessageId,
-                                              chatId: capturedChatId,
-                                              error: error)
-                        return
+        let currentChatId = self.chat.id
+        isUploadingFile = true
+        
+        // Temporary placeholder — shown while uploading
+        let tempMessageId = -Int.random(in: 1000000...9999999)
+        let tempMessage = Message(
+            id: tempMessageId,
+            displayText: "SCANNING:\(fileName)",
+            name: chatViewModel.getCurrentUsername(),
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            isRead: false
+        )
+        addTemporaryMessage(tempMessage, chatId: currentChatId)
+        
+        guard let signalR = chatViewModel.signalRService as? SignalRService else {
+            handleUploadError(tempMessageId: tempMessageId, chatId: currentChatId,
+                              error: NSError(domain: "SignalR", code: -1,
+                                             userInfo: [NSLocalizedDescriptionKey: "SignalR not available"]))
+            return
+        }
+        
+        print("🔍 Starting file upload and scan")
+        
+        let capturedChatId = currentChatId
+        let capturedTempMessageId = tempMessageId
+        let isGroup = self.chat.type == 0  // ✅ Determine group/private ONCE at the beginning
+        
+        guard let token = UserDefaults.standard.string(forKey: "authToken") else {
+            handleUploadError(tempMessageId: tempMessageId, chatId: currentChatId,
+                              error: NSError(domain: "Auth", code: 401,
+                                             userInfo: [NSLocalizedDescriptionKey: "No authentication token"]))
+            return
+        }
+        
+        let baseUrl = "http://158.220.90.131:8444"
+        let uploadUrl = "\(baseUrl)/api/Chat/upload"
+        print("📤 Uploading to: \(uploadUrl)")
+        
+        var request = URLRequest(url: URL(string: uploadUrl)!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        let boundary = UUID().uuidString
+        request.setValue("multipart/form-data; boundary=\(boundary)",
+                         forHTTPHeaderField: "Content-Type")
+        
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+        let mimeType = getMimeType(for: fileName)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n".data(using: .utf8)!)
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+        
+        // Show UPLOADING status while the HTTP request is in flight
+        updateTemporaryMessageToUploading(capturedTempMessageId,
+                                          chatId: capturedChatId,
+                                          fileName: fileName)
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                
+                if let error = error {
+                    print("❌ HTTP upload failed: \(error)")
+                    self.handleUploadError(tempMessageId: capturedTempMessageId,
+                                           chatId: capturedChatId,
+                                           error: error)
+                    return
+                }
+                
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    self.handleUploadError(tempMessageId: capturedTempMessageId,
+                                           chatId: capturedChatId,
+                                           error: NSError(domain: "Upload", code: 500,
+                                                          userInfo: [NSLocalizedDescriptionKey: "No response from server"]))
+                    return
+                }
+                
+                print("📊 HTTP Status: \(httpResponse.statusCode)")
+                
+                guard let responseData = data else {
+                    self.handleUploadError(tempMessageId: capturedTempMessageId,
+                                           chatId: capturedChatId,
+                                           error: NSError(domain: "Upload", code: 500,
+                                                          userInfo: [NSLocalizedDescriptionKey: "Empty response"]))
+                    return
+                }
+                
+                guard httpResponse.statusCode == 200 else {
+                    let msg = String(data: responseData, encoding: .utf8) ?? "No response"
+                    print("❌ Server error \(httpResponse.statusCode): \(msg)")
+                    self.handleUploadError(tempMessageId: capturedTempMessageId,
+                                           chatId: capturedChatId,
+                                           error: NSError(domain: "Upload", code: httpResponse.statusCode,
+                                                          userInfo: [NSLocalizedDescriptionKey: "Server error: \(httpResponse.statusCode)"]))
+                    return
+                }
+                
+                // ── Parse JSON ───────────────────────────────────────────────
+                do {
+                    guard let json = try JSONSerialization.jsonObject(with: responseData,
+                                                                      options: []) as? [String: Any] else {
+                        throw NSError(domain: "Upload", code: 500,
+                                      userInfo: [NSLocalizedDescriptionKey: "Invalid JSON response"])
                     }
-
-                    guard let httpResponse = response as? HTTPURLResponse else {
-                        self.handleUploadError(tempMessageId: capturedTempMessageId,
-                                              chatId: capturedChatId,
-                                              error: NSError(domain: "Upload", code: 500,
-                                                             userInfo: [NSLocalizedDescriptionKey: "No response from server"]))
-                        return
-                    }
-
-                    print("📊 HTTP Status: \(httpResponse.statusCode)")
-
-                    guard let responseData = data else {
-                        self.handleUploadError(tempMessageId: capturedTempMessageId,
-                                              chatId: capturedChatId,
-                                              error: NSError(domain: "Upload", code: 500,
-                                                             userInfo: [NSLocalizedDescriptionKey: "Empty response"]))
-                        return
-                    }
-
-                    guard httpResponse.statusCode == 200 else {
-                        let msg = String(data: responseData, encoding: .utf8) ?? "No response"
-                        print("❌ Server error \(httpResponse.statusCode): \(msg)")
-                        self.handleUploadError(tempMessageId: capturedTempMessageId,
-                                              chatId: capturedChatId,
-                                              error: NSError(domain: "Upload", code: httpResponse.statusCode,
-                                                             userInfo: [NSLocalizedDescriptionKey: "Server error: \(httpResponse.statusCode)"]))
-                        return
-                    }
-
-                    // ── Parse JSON ───────────────────────────────────────────────
-                    do {
-                        guard let json = try JSONSerialization.jsonObject(with: responseData,
-                                                                          options: []) as? [String: Any] else {
-                            throw NSError(domain: "Upload", code: 500,
-                                          userInfo: [NSLocalizedDescriptionKey: "Invalid JSON response"])
-                        }
-
-                        print("📦 Upload response JSON: \(json)")
-
-                        // Server-side block check (some backends return isSafe in upload response)
-                        let serverSaysBlocked = (json["isSafe"] as? Bool) == false
-                        if serverSaysBlocked {
-                            print("🚫 FILE BLOCKED DURING UPLOAD: \(fileName)")
-                            self.isUploadingFile = false
-                           // self.removeTemporaryMessage(capturedTempMessageId, chatId: capturedChatId)
-
-                            if let index = self.chatViewModel.chats.firstIndex(where: { $0.id == capturedChatId }) {
-                                var updatedChat = self.chatViewModel.chats[index]
-                                var messages = updatedChat.messages
-                                messages.removeAll { $0.id == capturedTempMessageId }
-                                updatedChat = Chat(id: updatedChat.id, name: updatedChat.name,
-                                                  pictureUrl: updatedChat.pictureUrl, type: updatedChat.type,
-                                                  messages: messages, users: updatedChat.users,
-                                                  unreadCount: updatedChat.unreadCount, isOnline: updatedChat.isOnline)
-                                self.chatViewModel.chats[index] = updatedChat
-                                if self.chatViewModel.currentChat?.id == capturedChatId {
-                                    self.chatViewModel.currentChat = updatedChat
-                                }
-                                self.chatViewModel.saveChats()
-                                self.chatViewModel.notifyChatsUpdated()
+                    
+                    print("📦 Upload response JSON: \(json)")
+                    
+                    let serverSaysBlocked = (json["isSafe"] as? Bool) == false
+                    if serverSaysBlocked {
+                        print("🚫 FILE BLOCKED DURING UPLOAD: \(fileName)")
+                        self.isUploadingFile = false
+                        
+                        if let index = self.chatViewModel.chats.firstIndex(where: { $0.id == capturedChatId }) {
+                            var updatedChat = self.chatViewModel.chats[index]
+                            var messages = updatedChat.messages
+                            messages.removeAll { $0.id == capturedTempMessageId }
+                            updatedChat = Chat(id: updatedChat.id, name: updatedChat.name,
+                                               pictureUrl: updatedChat.pictureUrl, type: updatedChat.type,
+                                               messages: messages, users: updatedChat.users,
+                                               unreadCount: updatedChat.unreadCount, isOnline: updatedChat.isOnline)
+                            self.chatViewModel.chats[index] = updatedChat
+                            if self.chatViewModel.currentChat?.id == capturedChatId {
+                                self.chatViewModel.currentChat = updatedChat
                             }
-
-                            let alertMsg = "⚠️ File Blocked\n\nThe file \"\(fileName)\" contains malware and cannot be sent."
-                            let alert = UIAlertController(title: "File Blocked", message: alertMsg, preferredStyle: .alert)
-                            alert.addAction(UIAlertAction(title: "OK", style: .default))
-                            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                               let root = scene.windows.first?.rootViewController {
-                                root.present(alert, animated: true)
-                            }
-                            return
+                            self.chatViewModel.saveChats()
+                            self.chatViewModel.notifyChatsUpdated()
                         }
-
-                        // ── Extract URL ──────────────────────────────────────────
-                        guard let fileUrl = json["url"] as? String else {
-                            print("⚠️ No 'url' field in response")
-                            self.handleUploadError(
-                                tempMessageId: capturedTempMessageId,
-                                chatId: capturedChatId,
-                                error: NSError(domain: "Upload", code: 500,
-                                               userInfo: [NSLocalizedDescriptionKey: "No URL in server response"]))
-                            return
+                        
+                        let alertMsg = "⚠️ File Blocked\n\nThe file \"\(fileName)\" contains malware and cannot be sent."
+                        let alert = UIAlertController(title: "File Blocked", message: alertMsg, preferredStyle: .alert)
+                        alert.addAction(UIAlertAction(title: "OK", style: .default))
+                        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                           let root = scene.windows.first?.rootViewController {
+                            root.present(alert, animated: true)
                         }
-
-                        let fullFileUrl   = fileUrl.hasPrefix("http") ? fileUrl : "\(baseUrl)\(fileUrl)"
-                        let fileExtension = (fileName as NSString).pathExtension.lowercased()
-                        let fileSize      = Int64(responseData.count)
-
-                        print("✅ File uploaded successfully: \(fullFileUrl)")
-
-                        let audioExtensions = ["m4a", "mp3", "wav", "aac", "ogg", "caf", "aiff"]
-                        let isVoice = audioExtensions.contains(fileExtension)
-
-                        if isVoice {
-                            // ── VOICE: show bubble instantly, skip scanning ───────
-                            // Replace the SCANNING/UPLOADING placeholder with a real
-                            // optimistic voice bubble (uses the actual .m4a URL so
-                            // UniversalMessageBubble renders it as VoiceMessageBubble).
-                            // We keep the negative tempMessageId so that when the
-                            // SignalR echo arrives, replaceOptimisticMessageImmediately
-                            // finds it by URL and swaps it for the confirmed message.
-                            self.isUploadingFile = false
-
-                            if let index = self.chatViewModel.chats.firstIndex(where: { $0.id == capturedChatId }) {
-                                var updatedChat = self.chatViewModel.chats[index]
-                                var messages    = updatedChat.messages
-
-                                if let tempIndex = messages.firstIndex(where: { $0.id == capturedTempMessageId }) {
-                                    // Swap placeholder text for the real URL
-                                    messages[tempIndex] = Message(
-                                        id: capturedTempMessageId,   // still negative → optimistic
-                                                    displayText: fullFileUrl,           // .m4a URL → renders as voice bubble
-                                        name: self.chatViewModel.getCurrentUsername(),
-                                        timestamp: ISO8601DateFormatter().string(from: Date()),
-                                        isRead: true
-                                    )
-                                }
-
-                                updatedChat = Chat(
-                                    id: updatedChat.id, name: updatedChat.name,
-                                    pictureUrl: updatedChat.pictureUrl, type: updatedChat.type,
-                                    messages: messages, users: updatedChat.users,
-                                    unreadCount: 0, isOnline: updatedChat.isOnline
+                        return
+                    }
+                    
+                    guard let fileUrl = json["url"] as? String else {
+                        print("⚠️ No 'url' field in response")
+                        self.handleUploadError(
+                            tempMessageId: capturedTempMessageId,
+                            chatId: capturedChatId,
+                            error: NSError(domain: "Upload", code: 500,
+                                           userInfo: [NSLocalizedDescriptionKey: "No URL in server response"]))
+                        return
+                    }
+                    
+                    let fullFileUrl = fileUrl.hasPrefix("http") ? fileUrl : "\(baseUrl)\(fileUrl)"
+                    let fileExtension = (fileName as NSString).pathExtension.lowercased()
+                    let fileSize = Int64(responseData.count)
+                    
+                    print("✅ File uploaded successfully: \(fullFileUrl)")
+                    
+                    let audioExtensions = ["m4a", "mp3", "wav", "aac", "ogg", "caf", "aiff"]
+                    let isVoice = audioExtensions.contains(fileExtension)
+                    
+                    if isVoice {
+                        // ── VOICE: show bubble instantly, skip scanning ───────
+                        self.isUploadingFile = false
+                        
+                        if let index = self.chatViewModel.chats.firstIndex(where: { $0.id == capturedChatId }) {
+                            var updatedChat = self.chatViewModel.chats[index]
+                            var messages = updatedChat.messages
+                            
+                            if let tempIndex = messages.firstIndex(where: { $0.id == capturedTempMessageId }) {
+                                messages[tempIndex] = Message(
+                                    id: capturedTempMessageId,
+                                    displayText: fullFileUrl,
+                                    name: self.chatViewModel.getCurrentUsername(),
+                                    timestamp: ISO8601DateFormatter().string(from: Date()),
+                                    isRead: true
                                 )
-                                self.chatViewModel.chats[index] = updatedChat
-
-                                if self.chatViewModel.currentChat?.id == capturedChatId {
-                                    self.chatViewModel.currentChat = updatedChat
-                                }
-                                self.chatViewModel.saveChats()
-                                self.chatViewModel.notifyChatsUpdated()
                             }
-
-                            // Track so the SignalR echo can find & replace this bubble
-                            self.chatViewModel.optimisticMessageTracking[capturedTempMessageId] = fullFileUrl
-
-                            print("🎙️ Voice message — skipping scan, sending directly")
+                            
+                            updatedChat = Chat(
+                                id: updatedChat.id, name: updatedChat.name,
+                                pictureUrl: updatedChat.pictureUrl, type: updatedChat.type,
+                                messages: messages, users: updatedChat.users,
+                                unreadCount: 0, isOnline: updatedChat.isOnline
+                            )
+                            self.chatViewModel.chats[index] = updatedChat
+                            
+                            if self.chatViewModel.currentChat?.id == capturedChatId {
+                                self.chatViewModel.currentChat = updatedChat
+                            }
+                            self.chatViewModel.saveChats()
+                            self.chatViewModel.notifyChatsUpdated()
+                        }
+                        
+                        self.chatViewModel.optimisticMessageTracking[capturedTempMessageId] = fullFileUrl
+                        
+                        print("🎙️ Voice message — skipping scan, sending directly")
+                        
+                        // ✅ USE CORRECT METHOD BASED ON CHAT TYPE
+                        if isGroup {
+                            print("📤 Sending GROUP voice message to chat \(capturedChatId)")
+                            signalR.sendGroupMessage(
+                                fullFileUrl,
+                                chatId: capturedChatId,
+                                fileUrl: fullFileUrl,
+                                fileName: fileName,
+                                fileSize: fileSize,
+                                fileExtension: fileExtension,
+                                type: .voice
+                            )
+                        } else {
+                            print("📤 Sending PRIVATE voice message to chat \(capturedChatId)")
                             signalR.sendMessage(
                                 fullFileUrl,
                                 chatId: capturedChatId,
@@ -732,19 +797,32 @@ struct ChatDetailView: View {
                                 fileName: fileName,
                                 fileSize: fileSize,
                                 fileExtension: fileExtension,
-                                type: .voice          // rawValue 2 — server will NOT scan
+                                type: .voice
                             )
-                            // ────────────────────────────────────────────────────
-
-                        } else {
-                            // ── ALL OTHER FILES: scanning flow as before ─────────
-                            print("📁 Non-voice file — proceeding with scan")
-                            self.updateTemporaryMessageToScanning(
-                                capturedTempMessageId,
+                        }
+                    } else {
+                        // ── ALL OTHER FILES: scanning flow as before ─────────
+                        print("📁 Non-voice file — proceeding with scan")
+                        self.updateTemporaryMessageToScanning(
+                            capturedTempMessageId,
+                            chatId: capturedChatId,
+                            fileName: fileName
+                        )
+                        
+                        // ✅ USE CORRECT METHOD BASED ON CHAT TYPE
+                        if isGroup {
+                            print("📤 Sending GROUP file message to chat \(capturedChatId)")
+                            signalR.sendGroupMessage(
+                                fullFileUrl,
                                 chatId: capturedChatId,
-                                fileName: fileName
+                                fileUrl: fullFileUrl,
+                                fileName: fileName,
+                                fileSize: fileSize,
+                                fileExtension: fileExtension,
+                                type: .file
                             )
-
+                        } else {
+                            print("📤 Sending PRIVATE file message to chat \(capturedChatId)")
                             signalR.sendMessage(
                                 fullFileUrl,
                                 chatId: capturedChatId,
@@ -754,18 +832,18 @@ struct ChatDetailView: View {
                                 fileExtension: fileExtension,
                                 type: .file
                             )
-                            // ────────────────────────────────────────────────────
                         }
-
-                    } catch {
-                        print("❌ JSON parse error: \(error)")
-                        self.handleUploadError(tempMessageId: capturedTempMessageId,
-                                              chatId: capturedChatId,
-                                              error: error)
                     }
+                    
+                } catch {
+                    print("❌ JSON parse error: \(error)")
+                    self.handleUploadError(tempMessageId: capturedTempMessageId,
+                                           chatId: capturedChatId,
+                                           error: error)
                 }
-            }.resume()
-        }
+            }
+        }.resume()
+    }
     // ✅ Helper: Update message to "Uploading..." status
     private func updateTemporaryMessageToUploading(_ tempMessageId: Int, chatId: Int, fileName: String) {
         if let index = chatViewModel.chats.firstIndex(where: { $0.id == chatId }) {
@@ -974,28 +1052,28 @@ struct ChatDetailView: View {
     }
 
     // ✅ Update your sendFileMessage method
-    private func sendFileMessage(data: Data, fileName: String) {
-        let fileExtension = (fileName as NSString).pathExtension.lowercased()
-        
-        // Define which extensions are actual images
-        let imageExtensions = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff"]
-        let isImage = imageExtensions.contains(fileExtension)
-        
-        if isImage {
-            // Check if the data is actually a valid image
-            if let image = UIImage(data: data) {
-                chatViewModel.sendImageMessage(image, chatId: chat.id)
-                clearFileSelection()
+        private func sendFileMessage(data: Data, fileName: String) {
+            let fileExtension = (fileName as NSString).pathExtension.lowercased()
+            
+            // Define which extensions are actual images
+            let imageExtensions = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff"]
+            let isImage = imageExtensions.contains(fileExtension)
+            
+            if isImage {
+                // Check if the data is actually a valid image
+                if let image = UIImage(data: data) {
+                    // ✅ chatViewModel.sendImageMessage now handles group vs private internally
+                    chatViewModel.sendImageMessage(image, chatId: chat.id)
+                    clearFileSelection()
+                } else {
+                    // If it's not a valid image, treat it as a regular file
+                    uploadFileWithSignalR(data: data, fileName: fileName)
+                }
             } else {
-                // If it's not a valid image, treat it as a regular file
+                // Use SignalR for all other files
                 uploadFileWithSignalR(data: data, fileName: fileName)
             }
-        } else {
-            // Use SignalR for all other files
-            uploadFileWithSignalR(data: data, fileName: fileName)
         }
-    }
-
     // ✅ IMPORTANT: Monitor FileStatusUpdated events
     // Add this to your view's onAppear or init
     private func setupFileUploadMonitoring() {
@@ -1010,17 +1088,24 @@ struct ChatDetailView: View {
         
         print("📡 Monitoring for FileStatusUpdated events...")
     }
-                  private func sendMessage() {
-                      let trimmedMessage = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
-                      guard !trimmedMessage.isEmpty else { return }
-                      
-                      chatViewModel.sendMessage(trimmedMessage, chatId: chat.id)
-                      messageText = ""
-                      
-                      DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                          scrollToBottom()
-                      }
-                  }
+    
+    
+    
+    private func sendMessage() {
+        let trimmedMessage = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedMessage.isEmpty else { return }
+        
+        // The chatViewModel.sendMessage already handles routing based on chat.type
+        // No changes needed here since you updated MessageSendingManager.sendMessage()
+        chatViewModel.sendMessage(trimmedMessage, chatId: chat.id)
+        messageText = ""
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            scrollToBottom()
+        }
+    }
+    
+    
     private func scrollToBottom() {
         guard !messages.isEmpty else { return }
         
@@ -1102,7 +1187,8 @@ struct UniversalMessageBubble: View {
     let gradientAnimation: Bool
     let chatViewModel: ChatViewModel
     let chatId: Int
-    
+    // Add this computed property to UniversalMessageBubble
+  
     private let iconGradientColors: [Color] = [.blue, .purple, .pink]
     
     private var seenByUsers: [String] {

@@ -191,113 +191,92 @@ struct VoiceRecordingView: View {
 }
 
 /// MARK: - Compact Recording View (WhatsApp-Style Inline Recording)
-struct CompactRecordingView: View {
+// Add this new view for recording controls (replaces CompactRecordingView)
+struct RecordingControlsView: View {
     @ObservedObject var recorder: VoiceRecorderService
     let onSend: (URL) -> Void
     let onCancel: () -> Void
-    @State private var animateWaveform = false
+    
+    @State private var recordingDuration: TimeInterval = 0
+    @State private var timer: Timer?
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 16) {
             // Cancel button
-            Button(action: onCancel) {
-                Image(systemName: "trash")
-                    .foregroundColor(.red)
-                    .font(.title3)
-                    .padding(8)
-                    .background(Color.red.opacity(0.1))
-                    .clipShape(Circle())
-            }
-            
-            // Recording indicator and waveform
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(Color.red)
-                    .frame(width: 10, height: 10)
-                    .scaleEffect(recorder.isRecording && !recorder.isPaused ? 1.2 : 1.0)
-                    .animation(recorder.isRecording && !recorder.isPaused ?
-                        .easeInOut(duration: 0.6).repeatForever(autoreverses: true) :
-                        .default,
-                        value: recorder.isRecording && !recorder.isPaused)
-                
-                // Animated waveform bars
-                HStack(spacing: 3) {
-                    ForEach(0..<12, id: \.self) { index in
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(Color.blue)
-                            .frame(width: 2, height: getWaveformHeight(index: index))
-                            .animation(
-                                recorder.isRecording && !recorder.isPaused ?
-                                    .easeInOut(duration: 0.3).repeatForever(autoreverses: true).delay(Double(index) * 0.05) :
-                                    .default,
-                                value: animateWaveform
-                            )
-                    }
-                }
-                .onAppear {
-                    animateWaveform.toggle()
-                }
-            }
-            
-            // Timer
-            Text(formatDuration(recorder.recordingDuration))
-                .font(.system(.body, design: .monospaced))
-                .foregroundColor(.primary)
-                .frame(minWidth: 60)
-            
-            Spacer()
-            
-            // Pause/Resume button
             Button(action: {
-                if recorder.isPaused {
-                    recorder.resumeRecording()
-                } else {
-                    recorder.pauseRecording()
-                }
+                timer?.invalidate()
+                timer = nil
+                onCancel()
             }) {
-                Image(systemName: recorder.isPaused ? "play.fill" : "pause.fill")
-                    .foregroundColor(.blue)
-                    .font(.title3)
-                    .padding(8)
-                    .background(Color.blue.opacity(0.1))
-                    .clipShape(Circle())
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.red)
             }
+            
+            // Recording indicator with waveform
+            HStack(spacing: 4) {
+                // Animated waveform while recording
+                ForEach(0..<5) { index in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(
+                            LinearGradient(
+                                colors: [.blue, .purple],
+                                startPoint: .bottom,
+                                endPoint: .top
+                            )
+                        )
+                        .frame(width: 4, height: CGFloat.random(in: 10...25))
+                        .animation(
+                            .easeInOut(duration: 0.5).repeatForever(autoreverses: true)
+                                .delay(Double(index) * 0.1),
+                            value: UUID()
+                        )
+                }
+                
+                Text(formatDuration(recordingDuration))
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(.blue)
+                    .padding(.horizontal, 8)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(.systemBackground))
+            .cornerRadius(20)
             
             // Send button
             Button(action: {
+                timer?.invalidate()
+                timer = nil
                 if let url = recorder.stopRecording() {
                     onSend(url)
                 }
             }) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .foregroundColor(recorder.recordingDuration > 0.5 ? .green : .gray)
-                    .font(.title3)
-                    .padding(8)
-                    .background(recorder.recordingDuration > 0.5 ? Color.green.opacity(0.1) : Color.gray.opacity(0.1))
-                    .clipShape(Circle())
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.green)
             }
-            .disabled(recorder.recordingDuration < 0.5)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color(.systemGray6))
-        .cornerRadius(25)
+        .padding(.horizontal, 8)
+        .onAppear {
+            startTimer()
+        }
+        .onDisappear {
+            timer?.invalidate()
+            timer = nil
+        }
     }
     
-    private func getWaveformHeight(index: Int) -> CGFloat {
-        if recorder.isPaused || !recorder.isRecording {
-            return 8
+    private func startTimer() {
+        recordingDuration = 0
+        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            recordingDuration += 0.1
         }
-        
-        // Create varying heights based on index and time
-        let phase = Date().timeIntervalSince1970 * 8 + Double(index)
-        let height = 8 + abs(sin(phase)) * 12
-        return max(5, min(25, height))
     }
     
     private func formatDuration(_ duration: TimeInterval) -> String {
         let minutes = Int(duration) / 60
         let seconds = Int(duration) % 60
-        return String(format: "%d:%02d", minutes, seconds)
+        let tenths = Int((duration - Double(Int(duration))) * 10)
+        return String(format: "%d:%02d.%d", minutes, seconds, tenths)
     }
 }

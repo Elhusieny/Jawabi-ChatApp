@@ -404,4 +404,12 @@ class AuthViewModel: ObservableObject {
         // Login to the new account
         login(userName: credentials.username, password: credentials.password)
     }
+    /// Logs out and signals that the app should show login for a new account
+    func logoutToAddAccount() {
+        print("➕ Logging out to add a new account")
+        clearSessionData()
+        // Don't set shouldShowSavedAccounts — we want the plain login screen
+        // so the user can type in fresh credentials
+        isAuthenticated = false
+    }
 }

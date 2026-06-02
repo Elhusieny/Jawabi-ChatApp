@@ -1,3 +1,11 @@
+//
+//  ScanningMessageView.swift
+//  Chat
+//
+//  Created by Ahmed Elhussieny on 02/06/2026.
+//
+
+
 import SwiftUI
 
 /// A view that displays a temporary message while a file is being scanned for viruses/malware
