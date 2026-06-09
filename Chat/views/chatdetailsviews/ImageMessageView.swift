@@ -1,11 +1,4 @@
-////
-////  ImageMessageView.swift
-////  Chat
-////
-////  Created by Ahmed Elhussieny on 02/06/2026.
-////
-//
-//
+
 //import SwiftUI
 //struct ImageMessageView: View {
 //    let imageUrl: String

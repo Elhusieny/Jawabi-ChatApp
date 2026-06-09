@@ -548,49 +548,86 @@ struct ProfileInfoSection: View {
 
 // Update ActionButtonsSection in ProfileView
 
+// Update ActionButtonsSection in ProfileView
+
 struct ActionButtonsSection: View {
     @Binding var showingLogoutConfirmation: Bool
     @Binding var showingDeleteConfirmation: Bool
-    @Binding var showingAccountSwitcher: Bool  // NEW
+    @Binding var showingAccountSwitcher: Bool
     @ObservedObject var authViewModel: AuthViewModel
     @Binding var isPresented: Bool
     
     private let darkPurpleGradient = [Color(hex: "#5a5aa8"), Color(hex: "#7373d2")]
     private let darkDeleteGradient = [Color(hex: "#a85a5a"), Color(hex: "#d27373")]
-    private let switchGradient = [Color(hex: "#5a7aa8"), Color(hex: "#739dd2")] // NEW: Blue-ish gradient for switch
+    private let addAccountGradient = [Color(hex: "#5a7aa8"), Color(hex: "#739dd2")]
+    private let switchAccountGradient = [Color(hex: "#6a5a8a"), Color(hex: "#8a73d2")]
     
     var body: some View {
         VStack(spacing: 12) {
-            // Replace the `if authViewModel.savedAccounts.count > 1` check:
             Button {
-                showingAccountSwitcher = true
-            } label: {
-                HStack {
-                    Image(systemName: "person.badge.plus")
-                        .foregroundStyle(.white)
-                    
-                    Text(authViewModel.savedAccounts.count > 1 ? "Switch / Add Account" : "Add Account")
-                        .foregroundStyle(.white)
-                        .fontWeight(.medium)
-                    
-                    Spacer()
-                    
-                    if authViewModel.savedAccounts.count > 1 {
+                
+                           isPresented = false
+                           DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                               authViewModel.logoutToAddAccount()
+                           }
+                       } label: {
+                           HStack {
+                               Image(systemName: "person.badge.plus")
+                                   .foregroundStyle(.white)
+                               
+                               Text("Add Another Account")
+                                   .foregroundStyle(.white)
+                                   .fontWeight(.medium)
+                               
+                               Spacer()
+                           }
+                           .padding()
+                           .background(
+                               LinearGradient(
+                                   colors: addAccountGradient,
+                                   startPoint: .leading,
+                                   endPoint: .trailing
+                               )
+                           )
+                           .cornerRadius(10)
+                           .shadow(color: Color(hex: "#739dd2").opacity(0.2), radius: 4, x: 0, y: 2)
+                       }
+               
+              .padding(.bottom, 8)
+              
+              // Optional: Add a divider
+            
+            
+            // Switch Account Button (only visible if there are multiple accounts)
+            if authViewModel.savedAccounts.count > 1 {
+                Button {
+                    showingAccountSwitcher = true
+                } label: {
+                    HStack {
+                        Image(systemName: "person.2.arrow.triangle.swap")
+                            .foregroundStyle(.white)
+                        
+                        Text("Switch Account")
+                            .foregroundStyle(.white)
+                            .fontWeight(.medium)
+                        
+                        Spacer()
+                        
                         Text("\(authViewModel.savedAccounts.count) accounts")
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.8))
                     }
-                }
-                .padding()
-                .background(
-                    LinearGradient(
-                        colors: switchGradient,
-                        startPoint: .leading,
-                        endPoint: .trailing
+                    .padding()
+                    .background(
+                        LinearGradient(
+                            colors: switchAccountGradient,
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
                     )
-                )
-                .cornerRadius(10)
-                .shadow(color: Color(hex: "#739dd2").opacity(0.2), radius: 4, x: 0, y: 2)
+                    .cornerRadius(10)
+                    .shadow(color: Color(hex: "#8a73d2").opacity(0.2), radius: 4, x: 0, y: 2)
+                }
             }
     
             // Existing Log Out button

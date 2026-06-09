@@ -80,28 +80,28 @@ class SignalRConnectionManager:BaseChatViewModel {
         }
 
         if joinedChats.contains(chatId) {
-            print("ℹ️ Already joined chat \(chatId)")
+           // print("ℹ️ Already joined chat \(chatId)")
             if currentChatId == chatId { markChatAsRead(chatId: chatId) }
             completion?(true)
             return
         }
 
-        print("🚪 Joining chat room \(chatId)…")
+       // print("🚪 Joining chat room \(chatId)…")
 
         signalRService.joinChat(chatId: chatId) { [weak self] success in
             DispatchQueue.main.async {
                 guard let self else { return }
                 if success {
                     self.joinedChats.insert(chatId)
-                    print("✅ Joined chat \(chatId)")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        (self.signalRService as? SignalRService)?.getMessages(chatId: chatId)
-                    }
+                   // print("✅ Joined chat \(chatId)")
+//                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+//                       // (self.signalRService as? SignalRService)?.getMessages(chatId: chatId)
+//                    }
                     self.processPendingMessages(for: chatId) { [weak self] msg, cid in
                         self?.sendMessageImmediately(msg, chatId: cid)
                     }
                 } else {
-                    print("❌ Failed to join chat \(chatId)")
+                   // print("❌ Failed to join chat \(chatId)")
                 }
                 completion?(success)
             }
@@ -122,11 +122,11 @@ class SignalRConnectionManager:BaseChatViewModel {
             print("❌ Cannot auto-join — SignalR not connected")
             return
         }
-        print("🔄 Auto-joining \(chats.count) chats…")
+       // print("🔄 Auto-joining \(chats.count) chats…")
         chats.forEach { chat in
             guard !joinedChats.contains(chat.id) else { return }
             joinChatRoom(chatId: chat.id) { success in
-                print(success ? "✅ Auto-joined \(chat.name)" : "❌ Failed to auto-join \(chat.name)")
+               // print(success ? "✅ Auto-joined \(chat.name)" : "❌ Failed to auto-join \(chat.name)")
             }
         }
     }

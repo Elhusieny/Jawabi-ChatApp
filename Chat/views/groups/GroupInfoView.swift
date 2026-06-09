@@ -1,4 +1,3 @@
-// GroupInfoView.swift
 import SwiftUI
 
 struct GroupInfoView: View {
@@ -8,6 +7,8 @@ struct GroupInfoView: View {
     @State private var showingMemberList = false
     @State private var members: [GroupMemberInfo] = []
     @State private var isLoading = false
+    @State private var showingAlert = false
+    @State private var alertMessage = ""
     
     private var currentUserId: String {
         UserDefaults.standard.string(forKey: "currentUserId") ?? ""
@@ -147,6 +148,15 @@ struct GroupInfoView: View {
         }
         .onAppear {
             loadMembers()
+            setupNotificationObservers()
+        }
+        .onDisappear {
+            removeNotificationObservers()
+        }
+        .alert("Message", isPresented: $showingAlert) {
+            Button("OK") { }
+        } message: {
+            Text(alertMessage)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ChatMembersUpdated"))) { notification in
             if let chatId = notification.userInfo?["chatId"] as? Int, chatId == chat.id {
@@ -155,6 +165,8 @@ struct GroupInfoView: View {
             }
         }
     }
+    
+    // MARK: - Member Loading
     
     private func loadMembers() {
         isLoading = true
@@ -185,32 +197,125 @@ struct GroupInfoView: View {
         return String(userId.prefix(8))
     }
     
+    // MARK: - Admin Management
+    
     private func makeAdmin(_ member: GroupMemberInfo) {
-        // Implement make admin API call
-        print("Making \(member.name) admin")
-        // TODO: Call API to make user admin
-        // After API call success, refresh group info
-        refreshGroupInfo()
+        isLoading = true
+        
+        AdminManagementService.shared.promoteToAdmin(chatId: chat.id, targetUserId: member.id)
+            .receive(on: DispatchQueue.main)
+            .sink(receiveCompletion: { completion in
+                self.isLoading = false
+                
+                if case .failure(let error) = completion {
+                    self.alertMessage = "Failed to promote \(member.name) to admin: \(error.localizedDescription)"
+                    self.showingAlert = true
+                    print("❌ Error promoting admin: \(error)")
+                }
+            }, receiveValue: {
+                print("✅ Successfully promoted \(member.name) to admin")
+                self.alertMessage = "\(member.name) is now an admin"
+                self.showingAlert = true
+                self.loadMembers()
+                self.refreshGroupInfo()
+            })
+            .store(in: &chatViewModel.cancellables)
     }
     
     private func removeAdmin(_ member: GroupMemberInfo) {
-        // Implement remove admin API call
-        print("Removing admin from \(member.name)")
-        // TODO: Call API to remove admin
-        // After API call success, refresh group info
-        refreshGroupInfo()
+        isLoading = true
+        
+        AdminManagementService.shared.removeAdmin(chatId: chat.id, targetUserId: member.id)
+            .receive(on: DispatchQueue.main)
+            .sink(receiveCompletion: { completion in
+                self.isLoading = false
+                
+                if case .failure(let error) = completion {
+                    self.alertMessage = "Failed to remove admin from \(member.name): \(error.localizedDescription)"
+                    self.showingAlert = true
+                    print("❌ Error removing admin: \(error)")
+                }
+            }, receiveValue: {
+                print("✅ Successfully removed admin from \(member.name)")
+                self.alertMessage = "\(member.name) is no longer an admin"
+                self.showingAlert = true
+                self.loadMembers()
+                self.refreshGroupInfo()
+            })
+            .store(in: &chatViewModel.cancellables)
     }
     
     private func removeMember(_ member: GroupMemberInfo) {
-        // Implement remove member API call
-        print("Removing member \(member.name)")
-        // TODO: Call API to remove member
-        // After API call success, refresh group info
-        refreshGroupInfo()
+        isLoading = true
+        
+        AdminManagementService.shared.removeMember(chatId: chat.id, targetUserId: member.id)
+            .receive(on: DispatchQueue.main)
+            .sink(receiveCompletion: { completion in
+                self.isLoading = false
+                
+                if case .failure(let error) = completion {
+                    self.alertMessage = "Failed to remove \(member.name): \(error.localizedDescription)"
+                    self.showingAlert = true
+                    print("❌ Error removing member: \(error)")
+                }
+            }, receiveValue: {
+                print("✅ Successfully removed \(member.name) from group")
+                self.alertMessage = "\(member.name) has been removed from the group"
+                self.showingAlert = true
+                self.loadMembers()
+                self.refreshGroupInfo()
+            })
+            .store(in: &chatViewModel.cancellables)
     }
     
     private func refreshGroupInfo() {
         chatViewModel.loadChat(chatId: chat.id)
+    }
+    
+    // MARK: - Notification Observers
+    
+    private func setupNotificationObservers() {
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("UserPromoted"),
+            object: nil,
+            queue: .main
+        ) { notification in
+            if let chatId = notification.userInfo?["chatId"] as? Int,
+               chatId == self.chat.id {
+                self.loadMembers()
+                self.refreshGroupInfo()
+            }
+        }
+        
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("AdminRemoved"),
+            object: nil,
+            queue: .main
+        ) { notification in
+            if let chatId = notification.userInfo?["chatId"] as? Int,
+               chatId == self.chat.id {
+                self.loadMembers()
+                self.refreshGroupInfo()
+            }
+        }
+        
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("MemberRemoved"),
+            object: nil,
+            queue: .main
+        ) { notification in
+            if let chatId = notification.userInfo?["chatId"] as? Int,
+               chatId == self.chat.id {
+                self.loadMembers()
+                self.refreshGroupInfo()
+            }
+        }
+    }
+    
+    private func removeNotificationObservers() {
+        NotificationCenter.default.removeObserver(self, name: NSNotification.Name("UserPromoted"), object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSNotification.Name("AdminRemoved"), object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSNotification.Name("MemberRemoved"), object: nil)
     }
 }
 
@@ -289,21 +394,45 @@ struct EnhancedMemberListView: View {
     }
     
     private func makeAdmin(_ member: GroupMemberInfo) {
-        print("Making \(member.name) admin")
-        onMembersUpdated()
-        loadMembers()
+        AdminManagementService.shared.promoteToAdmin(chatId: chat.id, targetUserId: member.id)
+            .receive(on: DispatchQueue.main)
+            .sink(receiveCompletion: { completion in
+                if case .failure(let error) = completion {
+                    print("❌ Error promoting admin: \(error)")
+                }
+            }, receiveValue: {
+                self.onMembersUpdated()
+                self.loadMembers()
+            })
+            .store(in: &chatViewModel.cancellables)
     }
     
     private func removeAdmin(_ member: GroupMemberInfo) {
-        print("Removing admin from \(member.name)")
-        onMembersUpdated()
-        loadMembers()
+        AdminManagementService.shared.removeAdmin(chatId: chat.id, targetUserId: member.id)
+            .receive(on: DispatchQueue.main)
+            .sink(receiveCompletion: { completion in
+                if case .failure(let error) = completion {
+                    print("❌ Error removing admin: \(error)")
+                }
+            }, receiveValue: {
+                self.onMembersUpdated()
+                self.loadMembers()
+            })
+            .store(in: &chatViewModel.cancellables)
     }
     
     private func removeMember(_ member: GroupMemberInfo) {
-        print("Removing member \(member.name)")
-        onMembersUpdated()
-        loadMembers()
+        AdminManagementService.shared.removeMember(chatId: chat.id, targetUserId: member.id)
+            .receive(on: DispatchQueue.main)
+            .sink(receiveCompletion: { completion in
+                if case .failure(let error) = completion {
+                    print("❌ Error removing member: \(error)")
+                }
+            }, receiveValue: {
+                self.onMembersUpdated()
+                self.loadMembers()
+            })
+            .store(in: &chatViewModel.cancellables)
     }
 }
 

@@ -23,7 +23,7 @@ protocol SignalRServiceProtocol: ObservableObject {
     )
     func joinChat(chatId: Int, completion: ((Bool) -> Void)?)
     func leaveChat(chatId: Int)
-    func getMessages(chatId: Int)
+    //func getMessages(chatId: Int)
     func deleteMessage(messageId: Int)
     func sendTypingIndicator(chatId: Int)
     func markAsRead(chatId: Int)
@@ -130,6 +130,7 @@ class SignalRService: SignalRServiceProtocol, ObservableObject {
     }
     
     private func setupHandlers() {
+        setupAdminHandlers()
         connection.on(method: "ReceivePrivateMessage") { [weak self] (messageData: ReceivedPrivateMessage) in
             print("📥 SignalR: NEW PRIVATE message received")
             print("📥 From: \(messageData.from ?? "nil")")
@@ -275,6 +276,55 @@ class SignalRService: SignalRServiceProtocol, ObservableObject {
         print("✅ SignalR handlers setup completed")
     }
     
+    private func setupAdminHandlers() {
+        connection.on(method: "UserPromoted") { [weak self] (data: UserPromotedData) in
+               print("👑 SignalR: User \(data.userId) promoted to \(data.newRole) in chat \(data.chatId)")
+               
+               DispatchQueue.main.async {
+                   NotificationCenter.default.post(
+                       name: NSNotification.Name("UserPromoted"),
+                       object: nil,
+                       userInfo: [
+                           "chatId": data.chatId,
+                           "userId": data.userId,
+                           "newRole": data.newRole
+                       ]
+                   )
+               }
+           }
+           
+        
+        connection.on(method: "AdminRemoved") { [weak self] (chatId: Int, userId: String) in
+            print("❌ SignalR: Admin role removed from user \(userId)")
+            
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("AdminRemoved"),
+                    object: nil,
+                    userInfo: [
+                        "chatId": chatId,
+                        "userId": userId
+                    ]
+                )
+            }
+        }
+        
+        connection.on(method: "MemberRemoved") { [weak self] (chatId: Int, userId: String) in
+            print("🚫 SignalR: Member \(userId) removed from chat \(chatId)")
+            
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("MemberRemoved"),
+                    object: nil,
+                    userInfo: [
+                        "chatId": chatId,
+                        "userId": userId
+                    ]
+                )
+            }
+        }
+    }
+     
     // MARK: - Send Message
     
     func sendMessage(
@@ -567,11 +617,11 @@ class SignalRService: SignalRServiceProtocol, ObservableObject {
     
     func joinChat(chatId: Int, completion: ((Bool) -> Void)? = nil) {
         guard connectionState == .connected else {
-            print("❌ Cannot join chat - SignalR not connected")
+       //     print("❌ Cannot join chat - SignalR not connected")
             completion?(false); return
         }
         
-        print("🚪 SignalR: Joining room \(chatId)")
+       // print("🚪 SignalR: Joining room \(chatId)")
         
         if let completion = completion {
             joinCompletionHandlers[chatId] = completion
@@ -580,17 +630,17 @@ class SignalRService: SignalRServiceProtocol, ObservableObject {
         connection.invoke(method: "JoinRoom", chatId) { [weak self] error in
             DispatchQueue.main.async {
                 if let error = error {
-                    print("❌ SignalR JoinRoom failed: \(error)")
+                   // print("❌ SignalR JoinRoom failed: \(error)")
                     self?.connectionError = "JoinRoom failed: \(error.localizedDescription)"
                     completion?(false)
                     self?.joinCompletionHandlers.removeValue(forKey: chatId)
                 } else {
-                    print("✅ SignalR JoinRoom successful for chat \(chatId)")
+                  //  print("✅ SignalR JoinRoom successful for chat \(chatId)")
                     completion?(true)
                     self?.joinCompletionHandlers.removeValue(forKey: chatId)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        self?.getMessages(chatId: chatId)
-                    }
+//                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+//                        self?.getMessages(chatId: chatId)
+//                    }
                 }
             }
         }
@@ -620,21 +670,21 @@ class SignalRService: SignalRServiceProtocol, ObservableObject {
             }
         }
     }
-    func getMessages(chatId: Int) {
-        guard connectionState == .connected else {
-            print("❌ Cannot get messages - SignalR not connected"); return
-        }
-        connection.invoke(method: "GetMessages", chatId) { [weak self] error in
-            if let error = error {
-                print("❌ SignalR GetMessages failed: \(error)")
-                DispatchQueue.main.async {
-                    self?.connectionError = "GetMessages failed: \(error.localizedDescription)"
-                }
-            } else {
-                print("✅ SignalR GetMessages request sent")
-            }
-        }
-    }
+//    func getMessages(chatId: Int) {
+//        guard connectionState == .connected else {
+//            print("❌ Cannot get messages - SignalR not connected"); return
+//        }
+//        connection.invoke(method: "GetMessages", chatId) { [weak self] error in
+//            if let error = error {
+//                print("❌ SignalR GetMessages failed: \(error)")
+//                DispatchQueue.main.async {
+//                    self?.connectionError = "GetMessages failed: \(error.localizedDescription)"
+//                }
+//            } else {
+//                print("✅ SignalR GetMessages request sent")
+//            }
+//        }
+//    }
     
     func getMessagesWithSeenStatus(chatId: Int) {
         guard connectionState == .connected else {
@@ -834,4 +884,5 @@ private class ConnectionDelegate: HubConnectionDelegate {
     func connectionDidReconnect() {
         print("✅ SignalR: Successfully reconnected")
     }
+    
 }

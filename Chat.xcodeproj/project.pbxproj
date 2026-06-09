@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5663DEEB2FD7DE8F005D648B /* SwiftData.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5663DEEA2FD7DE8F005D648B /* SwiftData.framework */; };
 		569B41CE2F8F91CF00979F8F /* FirebaseAI in Frameworks */ = {isa = PBXBuildFile; productRef = 569B41CD2F8F91CF00979F8F /* FirebaseAI */; };
 		569B41D02F8F91CF00979F8F /* FirebaseAILogic in Frameworks */ = {isa = PBXBuildFile; productRef = 569B41CF2F8F91CF00979F8F /* FirebaseAILogic */; };
 		569B41D22F8F91CF00979F8F /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 569B41D12F8F91CF00979F8F /* FirebaseAnalytics */; };
@@ -19,6 +20,7 @@
 
 /* Begin PBXFileReference section */
 		5612B0B32EC9D0BF000D398D /* Chat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Chat.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5663DEEA2FD7DE8F005D648B /* SwiftData.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftData.framework; path = System/Library/Frameworks/SwiftData.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -55,6 +57,7 @@
 				56E963402ED7299200273CD7 /* Alamofire in Frameworks */,
 				569B41D22F8F91CF00979F8F /* FirebaseAnalytics in Frameworks */,
 				569B41CE2F8F91CF00979F8F /* FirebaseAI in Frameworks */,
+				5663DEEB2FD7DE8F005D648B /* SwiftData.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -81,6 +84,7 @@
 		569B41D72F8FA84E00979F8F /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				5663DEEA2FD7DE8F005D648B /* SwiftData.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
