@@ -21,12 +21,15 @@ protocol GroupRoomServiceProtocol {
 // MARK: - Group Room Service
 class GroupRoomService: GroupRoomServiceProtocol {
     static let shared = GroupRoomService()
-    private let baseURL = "http://158.220.90.131:8444/api/Chat"
-    
+    /// Base URL for API endpoints
+        var baseURL: String {
+            return Utilities.baseURL
+        }
+        
     private init() {}
     
     func createRoom(_ request: CreateRoomRequest) -> AnyPublisher<CreateRoomResponse, Error> {
-        guard let url = URL(string: "\(baseURL)/CreateRoom") else {
+        guard let url = URL(string: "\(baseURL)/api/Chat/CreateRoom") else {
             return Fail(error: NetworkError.invalidURL)
                 .eraseToAnyPublisher()
         }

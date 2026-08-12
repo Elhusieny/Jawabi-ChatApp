@@ -5,8 +5,11 @@ import Combine
 class AdminManagementService {
     static let shared = AdminManagementService()
     
-    private let baseURL = "http://158.220.90.131:8444"
-    
+    /// Base URL for API endpoints
+        var baseURL: String {
+            return Utilities.baseURL
+        }
+        
     // MARK: - Promote to Admin
     func promoteToAdmin(chatId: Int, targetUserId: String) -> AnyPublisher<Void, Error> {
         let endpoint = "\(baseURL)/api/chat/PromoteToAdmin"
@@ -97,6 +100,21 @@ class AdminManagementService {
         return URLSession.shared.dataTaskPublisher(for: request)
             .mapError { $0 as Error }
             .map { _ in () }
+            .eraseToAnyPublisher()
+    }
+    func fetchGroupMembers(chatId: Int) -> AnyPublisher<[GroupMemberDTO], Error> {
+        guard let url = URL(string: "\(baseURL)/api/Chat/usersOfGroup/\(chatId)") else {
+            return Fail(error: URLError(.badURL)).eraseToAnyPublisher()
+        }
+        var request = URLRequest(url: url)
+        if let token = UserDefaults.standard.string(forKey: "authToken") {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        return URLSession.shared.dataTaskPublisher(for: request)
+            .map(\.data)
+            .decode(type: GroupMembersResponse.self, decoder: JSONDecoder())
+            .map(\.result)
+            .receive(on: DispatchQueue.main)
             .eraseToAnyPublisher()
     }
 }

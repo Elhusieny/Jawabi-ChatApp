@@ -12,8 +12,11 @@ protocol GroupChatServiceProtocol {
 // MARK: - Group Chat Service
 class GroupChatService: GroupChatServiceProtocol {
     static let shared = GroupChatService()
-    private let baseURL = "http://184.174.37.115:8444/api/Chat"
-    
+    /// Base URL for API endpoints
+        var baseURL: String {
+            return Utilities.baseURL
+        }
+        
     private init() {}
     
     // MARK: - Create Room

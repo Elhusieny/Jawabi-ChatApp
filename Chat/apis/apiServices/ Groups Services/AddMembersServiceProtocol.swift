@@ -17,8 +17,9 @@ protocol AddMembersServiceProtocol {
 
 class AddMembersService: AddMembersServiceProtocol {
     static let shared = AddMembersService()
-    private let baseURL = Utilities.baseURL
-    
+    var baseURL: String {
+        return Utilities.baseURL
+    }
     private init() {}
     
     func addMembers(chatId: Int, memberIds: [String]) -> AnyPublisher<AddMembersResponse, Error> {
